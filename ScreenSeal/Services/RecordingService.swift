@@ -237,7 +237,9 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         guard !captureDisplayFrame.isEmpty else { return image }
 
         let pointer = pointerTrackingService.snapshot
-        let targetScale: CGFloat = pointer.isPrimaryButtonPressed && captureDisplayFrame.contains(pointer.cursorLocation)
+        let anchorLocation = pointer.zoomAnchorLocation ?? pointer.cursorLocation
+        let shouldZoom = pointer.isZoomActive && captureDisplayFrame.contains(anchorLocation)
+        let targetScale: CGFloat = shouldZoom
             ? zoomProfile.zoomInScale
             : zoomProfile.zoomOutScale
 
@@ -247,15 +249,14 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         let alpha = min(1.0, elapsed / zoomProfile.easingDuration)
         currentZoomScale = currentZoomScale + ((targetScale - currentZoomScale) * alpha)
 
-        guard currentZoomScale > zoomProfile.zoomOutScale + 0.001,
-              captureDisplayFrame.contains(pointer.cursorLocation) else {
+        guard currentZoomScale > zoomProfile.zoomOutScale + 0.001, shouldZoom else {
             return image
         }
 
         let scaleX = extent.width / captureDisplayFrame.width
         let scaleY = extent.height / captureDisplayFrame.height
-        let cursorLocalX = pointer.cursorLocation.x - captureDisplayFrame.minX
-        let cursorLocalY = pointer.cursorLocation.y - captureDisplayFrame.minY
+        let cursorLocalX = anchorLocation.x - captureDisplayFrame.minX
+        let cursorLocalY = anchorLocation.y - captureDisplayFrame.minY
         let cursorX = cursorLocalX * scaleX
         let cursorY = cursorLocalY * scaleY
 
