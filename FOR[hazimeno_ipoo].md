@@ -1,0 +1,60 @@
+# FOR[hazimeno_ipoo]
+
+## このプロジェクトは何？
+ScreenSeal は、macOS のメニューバーに常駐して、画面の一部をモザイクで隠すアプリです。
+録画中や画面共有中に、パスワードや個人情報を見せないために使います。
+
+## 技術アーキテクチャ（全体の仕組み）
+1. `ScreenCaptureService` がディスプレイ映像をリアルタイム取得します。
+2. `WindowManager` がモザイク用ウィンドウを管理します。
+3. `FilterProcessor` が Core Image でぼかし/モザイク処理をします。
+4. `OverlayContentView` が加工済み画像を表示します。
+5. `RecordingService`（macOS 15+）が録画を MP4 に保存します。
+6. `PointerTrackingService` がカーソル位置とクリック状態を追跡し、クリック時ズームに使います。
+
+## コード構造
+- `ScreenSeal/App`: 起動、ライフサイクル
+- `ScreenSeal/Models`: 設定や状態モデル（モザイク設定、録画状態、ズーム設定）
+- `ScreenSeal/Services`: 画面取得、権限、録画、ポインタ追跡
+- `ScreenSeal/Processing`: 画像フィルター処理
+- `ScreenSeal/Windows`: オーバーレイウィンドウとマネージャ
+- `ScreenSeal/Views`: メニューバーUI、右クリックメニュー
+
+## なぜこの技術を選んだ？
+- ScreenCaptureKit: macOS 標準で高性能な画面キャプチャができる
+- Core Image: リアルタイムで画像効果をかけやすい
+- SwiftUI + AppKit: メニューバーUIと細かなmacOS操作を両立しやすい
+
+## よくあるバグと修正方法
+- 症状: 画面が真っ黒/更新されない
+  - 原因: Screen Recording 権限不足
+  - 修正: システム設定で画面収録権限を許可
+
+- 症状: 録画開始できない
+  - 原因: macOS 15 未満、または権限不足
+  - 修正: macOS 15+ を使用し、権限を再許可
+
+- 症状: ズームが急に動いて見づらい
+  - 原因: 補間時間が短すぎる
+  - 修正: `ZoomProfile.easingDuration` を少し長くする
+
+## 落とし穴と回避方法
+- 落とし穴: ディスプレイ座標系とキャプチャ座標系のズレ
+  - 回避: `screen.frame` と `CIImage.extent` から毎フレーム換算する
+
+- 落とし穴: 多画面時に別画面カーソルでズーム誤動作
+  - 回避: カーソルが対象ディスプレイ内のときだけズームON
+
+- 落とし穴: 録画APIはOSバージョン差がある
+  - 回避: `@available(macOS 15.0, *)` とガードで分岐
+
+## ベストプラクティス
+- 変更は `WindowManager` を中心に集約し、責務を混ぜない
+- 画像処理は `FilterProcessor` にまとめ、UIから分離する
+- 録画失敗とキャプチャ失敗は状態を分けて表示する
+- パフォーマンス問題は「解像度、FPS、queueDepth」から先に見る
+
+## 実行・ビルド
+- ビルド:
+  - `xcodebuild -project ScreenSeal.xcodeproj -scheme ScreenSeal -configuration Release build`
+
