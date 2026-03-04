@@ -76,6 +76,10 @@ struct MenuBarView: View {
             Text(error)
                 .foregroundColor(.red)
                 .font(.caption)
+
+            Button("Open Screen Recording Settings") {
+                openScreenRecordingSettings()
+            }
         }
 
         if let status = windowManager.recordingState.statusText {
@@ -84,6 +88,11 @@ struct MenuBarView: View {
                 .foregroundColor(windowManager.recordingState.isFailure ? .red : .secondary)
                 .font(.caption)
         }
+
+        Divider()
+        Text(appVersionText)
+            .foregroundColor(.secondary)
+            .font(.caption2)
 
         Divider()
 
@@ -95,7 +104,7 @@ struct MenuBarView: View {
 
     @ViewBuilder
     private var recordingSection: some View {
-        if windowManager.recordingState.isRecording {
+        if windowManager.canStopRecording {
             Button("Stop Recording") {
                 windowManager.stopRecording()
             }
@@ -130,5 +139,18 @@ struct MenuBarView: View {
                 windowManager.saveCurrentLayout(name: name)
             }
         }
+    }
+
+    private var appVersionText: String {
+        let short = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "-"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "-"
+        return "Version \(short) (\(build))"
+    }
+
+    private func openScreenRecordingSettings() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") else {
+            return
+        }
+        NSWorkspace.shared.open(url)
     }
 }

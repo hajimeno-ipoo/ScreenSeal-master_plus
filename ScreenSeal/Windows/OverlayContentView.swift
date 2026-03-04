@@ -31,6 +31,7 @@ final class OverlayContentView: NSView {
     }
 
     override var isFlipped: Bool { false }
+    override var mouseDownCanMoveWindow: Bool { true }
 
     private func setupLayers() {
         wantsLayer = true

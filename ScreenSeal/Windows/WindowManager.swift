@@ -2,7 +2,6 @@ import AppKit
 import Combine
 import CoreImage
 import os.log
-import QuartzCore
 
 private let logger = Logger(subsystem: "com.screenseal.app", category: "WindowManager")
 
@@ -18,13 +17,17 @@ final class WindowManager: ObservableObject {
     private var nextIndex = 1
     private var wakeObserver: Any?
 
-    private let zoomProfile = ZoomProfile.standard
-    private let pointerTrackingService = PointerTrackingService(fps: ZoomProfile.standard.fps)
-    private var zoomScaleByDisplay: [CGDirectDisplayID: CGFloat] = [:]
-    private var zoomUpdateTimestampByDisplay: [CGDirectDisplayID: CFTimeInterval] = [:]
+    private var recordingServiceRef: AnyObject?
 
-    @available(macOS 15.0, *)
-    private var recordingService: RecordingService?
+    var canStopRecording: Bool {
+        guard #available(macOS 15.0, *) else { return false }
+        switch recordingState {
+        case .starting, .recording, .stopping:
+            return true
+        case .idle, .failed:
+            return false
+        }
+    }
 
     init() {
         wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
@@ -35,12 +38,9 @@ final class WindowManager: ObservableObject {
             self?.handleWake()
         }
 
-        pointerTrackingService.start()
     }
 
     deinit {
-        pointerTrackingService.stop()
-
         if let observer = wakeObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(observer)
         }
@@ -95,19 +95,25 @@ final class WindowManager: ObservableObject {
         }
 
         let targetDisplayID = preferredRecordingDisplayID()
-        let service = recordingService ?? RecordingService()
+        let service = (recordingServiceRef as? RecordingService) ?? RecordingService()
         service.onStateChange = { [weak self] state in
             DispatchQueue.main.async {
                 self?.recordingState = state
+                if case .idle = state {
+                    self?.recordingServiceRef = nil
+                } else if case .failed = state {
+                    self?.recordingServiceRef = nil
+                }
             }
         }
-        recordingService = service
+        recordingServiceRef = service
 
         Task {
             do {
                 _ = try await service.start(displayID: targetDisplayID)
             } catch {
                 await MainActor.run {
+                    self.recordingServiceRef = nil
                     self.recordingState = .failed(message: "録画開始に必要な権限が不足、または開始に失敗しました")
                 }
             }
@@ -115,17 +121,25 @@ final class WindowManager: ObservableObject {
     }
 
     func stopRecording() {
-        guard #available(macOS 15.0, *), let service = recordingService else { return }
-        guard recordingState.isRecording else { return }
+        guard #available(macOS 15.0, *), let service = recordingServiceRef as? RecordingService else { return }
 
         Task {
             do {
                 _ = try await service.stop()
+                await MainActor.run {
+                    self.recordingServiceRef = nil
+                    self.recordingState = .idle
+                }
             } catch {
                 do {
                     _ = try await service.stop()
+                    await MainActor.run {
+                        self.recordingServiceRef = nil
+                        self.recordingState = .idle
+                    }
                 } catch {
                     await MainActor.run {
+                        self.recordingServiceRef = nil
                         self.recordingState = .failed(message: "録画停止に失敗しました")
                     }
                 }
@@ -213,11 +227,13 @@ final class WindowManager: ObservableObject {
         let service = ScreenCaptureService()
         screenCaptureService = service
         service.onFrame = { [weak self] frame, displayID in
-            self?.distributeFrame(frame, displayID: displayID)
+            Task { @MainActor [weak self] in
+                self?.distributeFrame(frame, displayID: displayID)
+            }
         }
         service.onError = { [weak self] message in
             DispatchQueue.main.async {
-                self?.captureError = message
+                self?.captureError = Self.userFriendlyCaptureError(from: message)
             }
         }
         captureError = nil
@@ -244,7 +260,6 @@ final class WindowManager: ObservableObject {
 
     private func distributeFrame(_ frame: CIImage, displayID: CGDirectDisplayID) {
         let frameExtent = frame.extent
-        let pointerSnapshot = pointerTrackingService.snapshot
 
         for window in windows {
             guard let screen = window.screen, screen.displayID == displayID else { continue }
@@ -266,18 +281,7 @@ final class WindowManager: ObservableObject {
             let baseRect = CGRect(x: captureX, y: captureY, width: captureW, height: captureH)
                 .intersection(frameExtent)
             guard !baseRect.isEmpty else { continue }
-
-            let zoomScale = currentZoomScale(for: displayID, screenFrame: screenFrame, pointer: pointerSnapshot)
-            let cropRect = zoomedCropRect(
-                baseRect: baseRect,
-                frameExtent: frameExtent,
-                screenFrame: screenFrame,
-                pointer: pointerSnapshot,
-                scaleX: scaleX,
-                scaleY: scaleY,
-                zoomScale: zoomScale
-            )
-
+            let cropRect = baseRect
             guard !cropRect.isEmpty else { continue }
 
             let cropped = frame.cropped(to: cropRect)
@@ -289,65 +293,11 @@ final class WindowManager: ObservableObject {
         }
     }
 
-    private func currentZoomScale(
-        for displayID: CGDirectDisplayID,
-        screenFrame: CGRect,
-        pointer: PointerSnapshot
-    ) -> CGFloat {
-        let targetScale: CGFloat = pointer.isPrimaryButtonPressed && screenFrame.contains(pointer.cursorLocation)
-            ? zoomProfile.zoomInScale
-            : zoomProfile.zoomOutScale
-
-        let now = CACurrentMediaTime()
-        let lastUpdate = zoomUpdateTimestampByDisplay[displayID] ?? now
-        let elapsed = max(0, now - lastUpdate)
-        zoomUpdateTimestampByDisplay[displayID] = now
-
-        let previous = zoomScaleByDisplay[displayID] ?? zoomProfile.zoomOutScale
-        let alpha = min(1.0, elapsed / zoomProfile.easingDuration)
-        let current = previous + (targetScale - previous) * alpha
-
-        zoomScaleByDisplay[displayID] = current
-        return current
-    }
-
-    private func zoomedCropRect(
-        baseRect: CGRect,
-        frameExtent: CGRect,
-        screenFrame: CGRect,
-        pointer: PointerSnapshot,
-        scaleX: CGFloat,
-        scaleY: CGFloat,
-        zoomScale: CGFloat
-    ) -> CGRect {
-        guard zoomScale > zoomProfile.zoomOutScale + 0.001,
-              screenFrame.contains(pointer.cursorLocation) else {
-            return baseRect
+    private static func userFriendlyCaptureError(from rawMessage: String) -> String {
+        let lower = rawMessage.lowercased()
+        if lower.contains("tcc") || lower.contains("denied") || rawMessage.contains("拒否") {
+            return "画面収録の権限が未許可です。システム設定で許可してください。"
         }
-
-        let cursorLocalX = pointer.cursorLocation.x - screenFrame.origin.x
-        let cursorLocalY = pointer.cursorLocation.y - screenFrame.origin.y
-        let cursorCaptureX = cursorLocalX * scaleX
-        let cursorCaptureY = cursorLocalY * scaleY
-
-        let zoomedWidth = baseRect.width / zoomScale
-        let zoomedHeight = baseRect.height / zoomScale
-
-        let minX = frameExtent.minX
-        let maxX = frameExtent.maxX - zoomedWidth
-        let minY = frameExtent.minY
-        let maxY = frameExtent.maxY - zoomedHeight
-
-        let clampedOriginX = min(max(cursorCaptureX - (zoomedWidth / 2), minX), maxX)
-        let clampedOriginY = min(max(cursorCaptureY - (zoomedHeight / 2), minY), maxY)
-
-        let zoomed = CGRect(
-            x: clampedOriginX,
-            y: clampedOriginY,
-            width: zoomedWidth,
-            height: zoomedHeight
-        )
-
-        return zoomed.intersection(frameExtent)
+        return rawMessage
     }
 }

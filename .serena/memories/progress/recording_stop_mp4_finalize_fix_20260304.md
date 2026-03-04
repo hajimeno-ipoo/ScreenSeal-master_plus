@@ -1,0 +1,1 @@
+2026-03-04: 録画停止後に mp4 が壊れる問題を修正。RecordingService.stop() を stopCapture -> recordingOutputDidFinishRecording待機 -> removeRecordingOutput の順に変更。SCRecordingOutputDelegate の finish/fail callback を受けて continuation を解放する実装を追加。xcodebuild で BUILD SUCCEEDED を確認。手動検証は未実施（ユーザー環境で確認待ち）。ロールバックは RecordingService.swift の該当変更を元順序に戻す。

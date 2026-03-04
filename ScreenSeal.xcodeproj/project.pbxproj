@@ -314,6 +314,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = Y3KJ3PU4WN;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ScreenSeal/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
@@ -338,6 +339,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = Y3KJ3PU4WN;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ScreenSeal/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
