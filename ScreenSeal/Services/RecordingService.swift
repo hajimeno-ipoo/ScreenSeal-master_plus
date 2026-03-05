@@ -22,6 +22,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
     private let pointerTrackingService = PointerTrackingService(fps: ZoomProfile.standard.fps)
     private let zoomProfile = ZoomProfile.standard
     private var currentZoomScale: CGFloat = ZoomProfile.standard.zoomOutScale
+    private var currentZoomCenter: CGPoint?
     private var lastZoomUpdateTimestamp: CFTimeInterval = CACurrentMediaTime()
     private var isFinalizing = false
 
@@ -87,6 +88,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             self.captureDisplayFrame = screenFrame
             self.sessionStarted = false
             self.currentZoomScale = zoomProfile.zoomOutScale
+            self.currentZoomCenter = nil
             self.lastZoomUpdateTimestamp = CACurrentMediaTime()
 
             await MainActor.run {
@@ -237,8 +239,8 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         guard !captureDisplayFrame.isEmpty else { return image }
 
         let pointer = pointerTrackingService.snapshot
-        let anchorLocation = pointer.zoomAnchorLocation ?? pointer.cursorLocation
-        let shouldZoom = pointer.isZoomActive && captureDisplayFrame.contains(anchorLocation)
+        let targetLocation = pointer.cursorLocation
+        let shouldZoom = pointer.isZoomActive && captureDisplayFrame.contains(targetLocation)
         let targetScale: CGFloat = shouldZoom
             ? zoomProfile.zoomInScale
             : zoomProfile.zoomOutScale
@@ -246,17 +248,38 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         let now = CACurrentMediaTime()
         let elapsed = max(0, now - lastZoomUpdateTimestamp)
         lastZoomUpdateTimestamp = now
-        let alpha = min(1.0, elapsed / zoomProfile.easingDuration)
-        currentZoomScale = currentZoomScale + ((targetScale - currentZoomScale) * alpha)
+        currentZoomScale = smoothValue(
+            currentZoomScale,
+            toward: targetScale,
+            elapsed: elapsed,
+            duration: zoomProfile.easingDuration
+        )
+
+        if shouldZoom {
+            let initialCenter = currentZoomCenter ?? pointer.zoomAnchorLocation ?? targetLocation
+            currentZoomCenter = smoothPoint(
+                initialCenter,
+                toward: targetLocation,
+                elapsed: elapsed,
+                duration: zoomProfile.cursorFollowDuration
+            )
+        }
+
+        guard let zoomCenter = currentZoomCenter else {
+            return image
+        }
 
         guard currentZoomScale > zoomProfile.zoomOutScale + 0.001, shouldZoom else {
+            if currentZoomScale <= zoomProfile.zoomOutScale + 0.001 {
+                currentZoomCenter = nil
+            }
             return image
         }
 
         let scaleX = extent.width / captureDisplayFrame.width
         let scaleY = extent.height / captureDisplayFrame.height
-        let cursorLocalX = anchorLocation.x - captureDisplayFrame.minX
-        let cursorLocalY = anchorLocation.y - captureDisplayFrame.minY
+        let cursorLocalX = zoomCenter.x - captureDisplayFrame.minX
+        let cursorLocalY = zoomCenter.y - captureDisplayFrame.minY
         let cursorX = cursorLocalX * scaleX
         let cursorY = cursorLocalY * scaleY
 
@@ -281,6 +304,30 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         )
         let scaled = translated.transformed(by: scaleTransform)
         return scaled.cropped(to: CGRect(x: 0, y: 0, width: extent.width, height: extent.height))
+    }
+
+    private func smoothValue(
+        _ current: CGFloat,
+        toward target: CGFloat,
+        elapsed: CFTimeInterval,
+        duration: TimeInterval
+    ) -> CGFloat {
+        guard duration > 0 else { return target }
+        let progress = min(1.0, elapsed / duration)
+        let eased = progress * progress * (3.0 - (2.0 * progress))
+        return current + ((target - current) * eased)
+    }
+
+    private func smoothPoint(
+        _ current: CGPoint,
+        toward target: CGPoint,
+        elapsed: CFTimeInterval,
+        duration: TimeInterval
+    ) -> CGPoint {
+        CGPoint(
+            x: smoothValue(current.x, toward: target.x, elapsed: elapsed, duration: duration),
+            y: smoothValue(current.y, toward: target.y, elapsed: elapsed, duration: duration)
+        )
     }
 
     private func makeWriter(
@@ -412,6 +459,8 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         pixelBufferAdaptor = nil
         sessionStarted = false
         captureDisplayFrame = .zero
+        currentZoomScale = zoomProfile.zoomOutScale
+        currentZoomCenter = nil
         isFinalizing = false
     }
 
