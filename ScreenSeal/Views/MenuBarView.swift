@@ -115,6 +115,9 @@ struct MenuBarView: View {
             }
             .keyboardShortcut("r")
         }
+
+        Toggle("Follow Cursor", isOn: $windowManager.followCursorRecording)
+            .disabled(windowManager.canStopRecording)
     }
 
     private func promptSavePreset() {

@@ -14,6 +14,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
     private let idlePanDeadzoneRatio: CGFloat = 0.20
     private let zoomPanDeadzoneRatio: CGFloat = 0.08
     private let idlePanDurationMultiplier: CGFloat = 2.4
+    private let followCursorCameraEnabled: Bool
     private var stream: SCStream?
     private var writer: AVAssetWriter?
     private var videoInput: AVAssetWriterInput?
@@ -36,6 +37,10 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
     }
 
     var onStateChange: ((RecordingState) -> Void)?
+
+    init(followCursorCameraEnabled: Bool = true) {
+        self.followCursorCameraEnabled = followCursorCameraEnabled
+    }
 
     func start(displayID: CGDirectDisplayID) async throws -> URL {
         guard case .idle = state else {
@@ -72,10 +77,13 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             config.channelCount = 2
 
             let outputURL = try makeOutputURL()
+            let writerSize = followCursorCameraEnabled
+                ? outputResolution
+                : CGSize(width: config.width, height: config.height)
             let writerBundle = try makeWriter(
                 outputURL: outputURL,
-                width: Int(outputResolution.width),
-                height: Int(outputResolution.height)
+                width: Int(writerSize.width),
+                height: Int(writerSize.height)
             )
 
             let filter = SCContentFilter(display: display, excludingApplications: [], exceptingWindows: [])
@@ -223,7 +231,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             width: CVPixelBufferGetWidth(outputPixelBuffer),
             height: CVPixelBufferGetHeight(outputPixelBuffer)
         )
-        let zoomedImage = applyRecordingZoom(to: sourceImage, outputSize: outputSize)
+        let zoomedImage = applyRecordingTransform(to: sourceImage, outputSize: outputSize)
         let renderBounds = CGRect(origin: .zero, size: outputSize)
         ciContext.render(zoomedImage, to: outputPixelBuffer, bounds: renderBounds, colorSpace: CGColorSpaceCreateDeviceRGB())
 
@@ -243,7 +251,69 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         }
     }
 
-    private func applyRecordingZoom(to image: CIImage, outputSize: CGSize) -> CIImage {
+    private func applyRecordingTransform(to image: CIImage, outputSize: CGSize) -> CIImage {
+        if followCursorCameraEnabled {
+            return applyFollowCursorCamera(to: image, outputSize: outputSize)
+        }
+        return applyClassicRecordingZoom(to: image, outputSize: outputSize)
+    }
+
+    private func applyClassicRecordingZoom(to image: CIImage, outputSize: CGSize) -> CIImage {
+        let extent = image.extent
+        guard !captureDisplayFrame.isEmpty, outputSize.width > 0, outputSize.height > 0 else { return image }
+
+        let pointer = pointerTrackingService.snapshot
+        let targetLocation = pointer.cursorLocation
+        let shouldZoom = pointer.isZoomActive && captureDisplayFrame.contains(targetLocation)
+        let targetScale: CGFloat = shouldZoom
+            ? zoomProfile.zoomInScale
+            : zoomProfile.zoomOutScale
+
+        let now = CACurrentMediaTime()
+        let elapsed = max(0, now - lastZoomUpdateTimestamp)
+        lastZoomUpdateTimestamp = now
+        currentZoomScale = smoothValue(
+            currentZoomScale,
+            toward: targetScale,
+            elapsed: elapsed,
+            duration: zoomProfile.easingDuration
+        )
+
+        if shouldZoom {
+            let initialCenter = currentZoomCenter ?? pointer.zoomAnchorLocation.map {
+                convertScreenPointToImagePoint($0, imageExtent: extent)
+            } ?? convertScreenPointToImagePoint(targetLocation, imageExtent: extent)
+            currentZoomCenter = smoothPoint(
+                initialCenter,
+                toward: convertScreenPointToImagePoint(targetLocation, imageExtent: extent),
+                elapsed: elapsed,
+                duration: zoomProfile.cursorFollowDuration
+            )
+        }
+
+        guard currentZoomScale > zoomProfile.zoomOutScale + 0.001 || shouldZoom else {
+            currentZoomCenter = nil
+            return image
+        }
+        guard let zoomCenter = currentZoomCenter else { return image }
+
+        let zoomedWidth = extent.width / currentZoomScale
+        let zoomedHeight = extent.height / currentZoomScale
+        let clampedX = min(max(zoomCenter.x - (zoomedWidth / 2), extent.minX), extent.maxX - zoomedWidth)
+        let clampedY = min(max(zoomCenter.y - (zoomedHeight / 2), extent.minY), extent.maxY - zoomedHeight)
+        let cropRect = CGRect(x: clampedX, y: clampedY, width: zoomedWidth, height: zoomedHeight)
+
+        let translated = image
+            .cropped(to: cropRect)
+            .transformed(by: CGAffineTransform(translationX: -cropRect.origin.x, y: -cropRect.origin.y))
+        let scaled = translated.transformed(by: CGAffineTransform(
+            scaleX: outputSize.width / cropRect.width,
+            y: outputSize.height / cropRect.height
+        ))
+        return scaled.cropped(to: CGRect(origin: .zero, size: outputSize))
+    }
+
+    private func applyFollowCursorCamera(to image: CIImage, outputSize: CGSize) -> CIImage {
         let extent = image.extent
         guard !captureDisplayFrame.isEmpty, outputSize.width > 0, outputSize.height > 0 else { return image }
 

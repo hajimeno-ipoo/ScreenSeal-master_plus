@@ -9,6 +9,7 @@ final class WindowManager: ObservableObject {
     @Published private(set) var windows: [OverlayWindow] = []
     @Published var captureError: String?
     @Published var recordingState: RecordingState = .idle
+    @Published var followCursorRecording = true
 
     let presetManager = PresetManager()
 
@@ -95,7 +96,8 @@ final class WindowManager: ObservableObject {
         }
 
         let targetDisplayID = preferredRecordingDisplayID()
-        let service = (recordingServiceRef as? RecordingService) ?? RecordingService()
+        let service = (recordingServiceRef as? RecordingService)
+            ?? RecordingService(followCursorCameraEnabled: followCursorRecording)
         service.onStateChange = { [weak self] state in
             DispatchQueue.main.async {
                 self?.recordingState = state
