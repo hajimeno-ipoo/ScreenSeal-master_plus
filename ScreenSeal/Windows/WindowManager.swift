@@ -10,6 +10,8 @@ final class WindowManager: ObservableObject {
     @Published var captureError: String?
     @Published var recordingState: RecordingState = .idle
     @Published var followCursorRecording = true
+    @Published var cursorHighlightEnabled = true
+    @Published var clickRingEnabled = true
 
     let presetManager = PresetManager()
 
@@ -98,7 +100,11 @@ final class WindowManager: ObservableObject {
 
         let targetDisplayID = preferredRecordingDisplayID()
         let service = (recordingServiceRef as? RecordingService)
-            ?? RecordingService(followCursorCameraEnabled: followCursorRecording)
+            ?? RecordingService(
+                followCursorCameraEnabled: followCursorRecording,
+                cursorHighlightEnabled: cursorHighlightEnabled,
+                clickRingEnabled: clickRingEnabled
+            )
         service.onStateChange = { [weak self] state in
             DispatchQueue.main.async {
                 self?.recordingState = state

@@ -7,6 +7,8 @@ struct PointerSnapshot {
     let isPrimaryButtonPressed: Bool
     let zoomAnchorLocation: CGPoint?
     let isZoomActive: Bool
+    let lastClickEventID: UInt64
+    let lastClickLocation: CGPoint?
 }
 
 final class PointerTrackingService {
@@ -22,8 +24,12 @@ final class PointerTrackingService {
     private var isPrimaryButtonPressedState = false
     private var zoomAnchorLocationState: CGPoint?
     private var isZoomActiveState = false
+    private var lastClickEventIDState: UInt64 = 0
+    private var lastClickLocationState: CGPoint?
     private var zoomAnchorLocation: CGPoint?
     private var isZoomActive = false
+    private var lastClickEventID: UInt64 = 0
+    private var lastClickLocation: CGPoint?
     private var previousPrimaryButtonPressed = false
     private var zoomReleaseDeadline: CFTimeInterval = 0
     private let zoomReleaseDelay: CFTimeInterval = 0.9
@@ -74,8 +80,7 @@ final class PointerTrackingService {
             previousPrimaryButtonPressed = pressed
             let anchor = zoomAnchorLocation
             let active = isZoomActive
-
-            self.stateQueue.async {
+            self.stateQueue.sync {
                 self.cursorLocationState = location
                 self.isPrimaryButtonPressedState = pressed
                 self.zoomAnchorLocationState = anchor
@@ -95,6 +100,8 @@ final class PointerTrackingService {
         zoomReleaseDeadline = 0
         zoomAnchorLocation = nil
         isZoomActive = false
+        lastClickEventID = 0
+        lastClickLocation = nil
     }
 
     var snapshot: PointerSnapshot {
@@ -103,7 +110,9 @@ final class PointerTrackingService {
                 cursorLocation: cursorLocationState,
                 isPrimaryButtonPressed: isPrimaryButtonPressedState,
                 zoomAnchorLocation: zoomAnchorLocationState,
-                isZoomActive: isZoomActiveState
+                isZoomActive: isZoomActiveState,
+                lastClickEventID: lastClickEventIDState,
+                lastClickLocation: lastClickLocationState
             )
         }
     }
@@ -269,7 +278,7 @@ final class PointerTrackingService {
 
     private func installMouseMonitors() {
         globalMouseDownMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown]) { [weak self] event in
-            self?.handleMouseDown(at: self?.screenLocation(from: event) ?? NSEvent.mouseLocation)
+            self?.handleMouseDown(at: self?.screenLocation(from: event) ?? .zero)
         }
 
         globalMouseUpMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseUp]) { [weak self] _ in
@@ -277,7 +286,7 @@ final class PointerTrackingService {
         }
 
         localMouseDownMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown]) { [weak self] event in
-            self?.handleMouseDown(at: self?.screenLocation(from: event) ?? NSEvent.mouseLocation)
+            self?.handleMouseDown(at: self?.screenLocation(from: event) ?? .zero)
             return event
         }
 
@@ -307,6 +316,10 @@ final class PointerTrackingService {
     }
 
     private func handleMouseDown(at location: CGPoint) {
+        let shouldRing = shouldShowClickRing(at: location)
+        lastClickEventID &+= 1
+        lastClickLocation = shouldRing ? location : nil
+
         if shouldTriggerZoom(at: location) {
             zoomAnchorLocation = location
             isZoomActive = true
@@ -316,6 +329,34 @@ final class PointerTrackingService {
             isZoomActive = false
             zoomReleaseDeadline = 0
         }
+
+        // Reflect click immediately so recording thread does not wait for timer tick.
+        let clickEventID = lastClickEventID
+        let clickLocation = lastClickLocation
+        stateQueue.sync {
+            self.cursorLocationState = location
+            self.isPrimaryButtonPressedState = true
+            self.zoomAnchorLocationState = zoomAnchorLocation
+            self.isZoomActiveState = isZoomActive
+            self.lastClickEventIDState = clickEventID
+            self.lastClickLocationState = clickLocation
+        }
+    }
+
+    private func shouldShowClickRing(at location: CGPoint) -> Bool {
+        if let screen = NSScreen.screens.first(where: { $0.frame.contains(location) }) {
+            let exclusionHeight = max(NSStatusBar.system.thickness, topSystemUIExclusionHeight)
+            if location.y >= (screen.frame.maxY - exclusionHeight) {
+                return false
+            }
+        }
+
+        if let frontmostApp = NSWorkspace.shared.frontmostApplication,
+           frontmostApp.bundleIdentifier == Bundle.main.bundleIdentifier {
+            return false
+        }
+
+        return true
     }
 
     private func handleMouseUp() {
@@ -323,10 +364,8 @@ final class PointerTrackingService {
         zoomReleaseDeadline = CACurrentMediaTime() + zoomReleaseDelay
     }
 
-    private func screenLocation(from event: NSEvent) -> CGPoint {
-        if let window = event.window {
-            return window.convertPoint(toScreen: event.locationInWindow)
-        }
+    private func screenLocation(from _: NSEvent) -> CGPoint {
         return NSEvent.mouseLocation
     }
+
 }

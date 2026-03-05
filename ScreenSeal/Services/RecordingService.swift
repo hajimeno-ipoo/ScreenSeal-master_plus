@@ -15,6 +15,16 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
     private let zoomPanDeadzoneRatio: CGFloat = 0.08
     private let idlePanDurationMultiplier: CGFloat = 2.4
     private let followCursorCameraEnabled: Bool
+    private let cursorHighlightEnabled: Bool
+    private let clickRingEnabled: Bool
+    private let highlightRadius: CGFloat = 100
+    private let highlightColor = CIColor(red: 0.10, green: 0.65, blue: 1.0, alpha: 0.52)
+    private let clickRingDuration: CFTimeInterval = 0.9
+    private let clickRingBaseRadius: CGFloat = 20
+    private let clickRingMaxRadius: CGFloat = 90
+    private let clickRingSpacing: CGFloat = 30
+    private let clickRingLineWidth: CGFloat = 6
+    private let clickRingColor = CIColor(red: 0.10, green: 0.72, blue: 1.0, alpha: 0.95)
     private var stream: SCStream?
     private var writer: AVAssetWriter?
     private var videoInput: AVAssetWriterInput?
@@ -30,6 +40,9 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
     private var currentZoomScale: CGFloat = ZoomProfile.standard.zoomOutScale
     private var currentZoomCenter: CGPoint?
     private var lastZoomUpdateTimestamp: CFTimeInterval = CACurrentMediaTime()
+    private var lastHandledClickEventID: UInt64 = 0
+    private var lastClickTimestamp: CFTimeInterval?
+    private var lastClickScreenLocation: CGPoint?
     private var isFinalizing = false
 
     private(set) var state: RecordingState = .idle {
@@ -38,8 +51,14 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
 
     var onStateChange: ((RecordingState) -> Void)?
 
-    init(followCursorCameraEnabled: Bool = true) {
+    init(
+        followCursorCameraEnabled: Bool = true,
+        cursorHighlightEnabled: Bool = true,
+        clickRingEnabled: Bool = true
+    ) {
         self.followCursorCameraEnabled = followCursorCameraEnabled
+        self.cursorHighlightEnabled = cursorHighlightEnabled
+        self.clickRingEnabled = clickRingEnabled
     }
 
     func start(displayID: CGDirectDisplayID) async throws -> URL {
@@ -103,6 +122,9 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             self.currentZoomScale = zoomProfile.zoomOutScale
             self.currentZoomCenter = nil
             self.lastZoomUpdateTimestamp = CACurrentMediaTime()
+            self.lastHandledClickEventID = 0
+            self.lastClickTimestamp = nil
+            self.lastClickScreenLocation = nil
 
             await MainActor.run {
                 pointerTrackingService.start()
@@ -227,13 +249,25 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         }
 
         let sourceImage = CIImage(cvPixelBuffer: imageBuffer)
+        let pointer = pointerTrackingService.snapshot
         let outputSize = CGSize(
             width: CVPixelBufferGetWidth(outputPixelBuffer),
             height: CVPixelBufferGetHeight(outputPixelBuffer)
         )
-        let zoomedImage = applyRecordingTransform(to: sourceImage, outputSize: outputSize)
+        let transformed = applyRecordingTransform(to: sourceImage, outputSize: outputSize, pointer: pointer)
+        let now = CACurrentMediaTime()
+        let effectedImage = applyCursorEffects(
+            to: transformed.image,
+            outputSize: outputSize,
+            pointer: pointer,
+            cursorPoint: transformed.cursorPoint,
+            clickPoint: transformed.clickPoint,
+            sourceRect: transformed.sourceRect,
+            imageExtent: transformed.imageExtent,
+            now: now
+        )
         let renderBounds = CGRect(origin: .zero, size: outputSize)
-        ciContext.render(zoomedImage, to: outputPixelBuffer, bounds: renderBounds, colorSpace: CGColorSpaceCreateDeviceRGB())
+        ciContext.render(effectedImage, to: outputPixelBuffer, bounds: renderBounds, colorSpace: CGColorSpaceCreateDeviceRGB())
 
         if !pixelBufferAdaptor.append(outputPixelBuffer, withPresentationTime: presentationTime), writer.status == .failed {
             recordingLogger.error("Video append failed: \(writer.error?.localizedDescription ?? "unknown")")
@@ -251,18 +285,27 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         }
     }
 
-    private func applyRecordingTransform(to image: CIImage, outputSize: CGSize) -> CIImage {
+    private typealias TransformResult = (
+        image: CIImage,
+        cursorPoint: CGPoint?,
+        clickPoint: CGPoint?,
+        sourceRect: CGRect,
+        imageExtent: CGRect
+    )
+
+    private func applyRecordingTransform(to image: CIImage, outputSize: CGSize, pointer: PointerSnapshot) -> TransformResult {
         if followCursorCameraEnabled {
-            return applyFollowCursorCamera(to: image, outputSize: outputSize)
+            return applyFollowCursorCamera(to: image, outputSize: outputSize, pointer: pointer)
         }
-        return applyClassicRecordingZoom(to: image, outputSize: outputSize)
+        return applyClassicRecordingZoom(to: image, outputSize: outputSize, pointer: pointer)
     }
 
-    private func applyClassicRecordingZoom(to image: CIImage, outputSize: CGSize) -> CIImage {
+    private func applyClassicRecordingZoom(to image: CIImage, outputSize: CGSize, pointer: PointerSnapshot) -> TransformResult {
         let extent = image.extent
-        guard !captureDisplayFrame.isEmpty, outputSize.width > 0, outputSize.height > 0 else { return image }
+        guard !captureDisplayFrame.isEmpty, outputSize.width > 0, outputSize.height > 0 else {
+            return (image, nil, nil, extent, extent)
+        }
 
-        let pointer = pointerTrackingService.snapshot
         let targetLocation = pointer.cursorLocation
         let shouldZoom = pointer.isZoomActive && captureDisplayFrame.contains(targetLocation)
         let targetScale: CGFloat = shouldZoom
@@ -293,9 +336,13 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
 
         guard currentZoomScale > zoomProfile.zoomOutScale + 0.001 || shouldZoom else {
             currentZoomCenter = nil
-            return image
+            let cursor = outputCursorPoint(for: targetLocation, imageExtent: extent, sourceRect: extent, outputSize: outputSize)
+            let clickPoint = pointer.lastClickLocation.flatMap {
+                outputCursorPoint(for: $0, imageExtent: extent, sourceRect: extent, outputSize: outputSize)
+            }
+            return (image, cursor, clickPoint, extent, extent)
         }
-        guard let zoomCenter = currentZoomCenter else { return image }
+        guard let zoomCenter = currentZoomCenter else { return (image, nil, nil, extent, extent) }
 
         let zoomedWidth = extent.width / currentZoomScale
         let zoomedHeight = extent.height / currentZoomScale
@@ -310,14 +357,19 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             scaleX: outputSize.width / cropRect.width,
             y: outputSize.height / cropRect.height
         ))
-        return scaled.cropped(to: CGRect(origin: .zero, size: outputSize))
+        let cursor = outputCursorPoint(for: targetLocation, imageExtent: extent, sourceRect: cropRect, outputSize: outputSize)
+        let clickPoint = pointer.lastClickLocation.flatMap {
+            outputCursorPoint(for: $0, imageExtent: extent, sourceRect: cropRect, outputSize: outputSize)
+        }
+        return (scaled.cropped(to: CGRect(origin: .zero, size: outputSize)), cursor, clickPoint, cropRect, extent)
     }
 
-    private func applyFollowCursorCamera(to image: CIImage, outputSize: CGSize) -> CIImage {
+    private func applyFollowCursorCamera(to image: CIImage, outputSize: CGSize, pointer: PointerSnapshot) -> TransformResult {
         let extent = image.extent
-        guard !captureDisplayFrame.isEmpty, outputSize.width > 0, outputSize.height > 0 else { return image }
+        guard !captureDisplayFrame.isEmpty, outputSize.width > 0, outputSize.height > 0 else {
+            return (image, nil, nil, extent, extent)
+        }
 
-        let pointer = pointerTrackingService.snapshot
         let targetLocation = pointer.cursorLocation
         let shouldZoom = pointer.isZoomActive
         let targetScale: CGFloat = shouldZoom
@@ -360,7 +412,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         )
 
         guard let zoomCenter = currentZoomCenter else {
-            return image
+            return (image, nil, nil, extent, extent)
         }
 
         let effectiveScale = shouldZoom
@@ -386,7 +438,163 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             y: outputSize.height / cropRect.height
         )
         let scaled = translated.transformed(by: scaleTransform)
-        return scaled.cropped(to: CGRect(origin: .zero, size: outputSize))
+        let cursor = outputCursorPoint(for: targetLocation, imageExtent: extent, sourceRect: cropRect, outputSize: outputSize)
+        let clickPoint = pointer.lastClickLocation.flatMap {
+            outputCursorPoint(for: $0, imageExtent: extent, sourceRect: cropRect, outputSize: outputSize)
+        }
+        return (scaled.cropped(to: CGRect(origin: .zero, size: outputSize)), cursor, clickPoint, cropRect, extent)
+    }
+
+    private func applyCursorEffects(
+        to image: CIImage,
+        outputSize: CGSize,
+        pointer: PointerSnapshot,
+        cursorPoint: CGPoint?,
+        clickPoint: CGPoint?,
+        sourceRect: CGRect,
+        imageExtent: CGRect,
+        now: CFTimeInterval
+    ) -> CIImage {
+        if pointer.lastClickEventID > 0, pointer.lastClickEventID != lastHandledClickEventID {
+            lastHandledClickEventID = pointer.lastClickEventID
+            if let clickLocation = pointer.lastClickLocation {
+                lastClickTimestamp = now
+                lastClickScreenLocation = clickLocation
+            } else {
+                lastClickTimestamp = nil
+                lastClickScreenLocation = nil
+            }
+        }
+
+        var output = image
+        let outputRect = CGRect(origin: .zero, size: outputSize)
+        var ringProgress: CGFloat?
+        if clickRingEnabled, self.lastClickTimestamp != nil {
+            let holdProgress: CGFloat = 1.0
+            if pointer.isPrimaryButtonPressed {
+                ringProgress = holdProgress
+            } else {
+                self.lastClickTimestamp = nil
+                self.lastClickScreenLocation = nil
+            }
+        }
+        let isRingActive = (ringProgress != nil)
+
+        if cursorHighlightEnabled, let cursorPoint {
+            let highlightAlphaMultiplier: CGFloat = isRingActive ? 0.75 : 1.0
+            let effectiveHighlightColor = CIColor(
+                red: highlightColor.red,
+                green: highlightColor.green,
+                blue: highlightColor.blue,
+                alpha: highlightColor.alpha * highlightAlphaMultiplier
+            )
+            let highlight = makeRadialGradientImage(
+                center: cursorPoint,
+                radius: highlightRadius,
+                color: effectiveHighlightColor,
+                outputRect: outputRect
+            )
+            output = highlight.composited(over: output)
+        }
+
+        let resolvedClickPoint = lastClickScreenLocation.flatMap {
+            outputCursorPoint(
+                for: $0,
+                imageExtent: imageExtent,
+                sourceRect: sourceRect,
+                outputSize: outputSize
+            )
+        } ?? clickPoint ?? cursorPoint
+
+        if let progress = ringProgress,
+           let clickPoint = resolvedClickPoint,
+           let ringOverlay = makeClickRingOverlayImage(
+            outputSize: outputSize,
+            center: clickPoint,
+            progress: progress
+           ) {
+            output = ringOverlay.composited(over: output)
+        }
+
+        return output
+    }
+
+    private func makeRadialGradientImage(
+        center: CGPoint,
+        radius: CGFloat,
+        color: CIColor,
+        outputRect: CGRect
+    ) -> CIImage {
+        let transparent = CIColor(red: color.red, green: color.green, blue: color.blue, alpha: 0)
+        let filter = CIFilter(
+            name: "CIRadialGradient",
+            parameters: [
+                "inputCenter": CIVector(cgPoint: center),
+                "inputRadius0": 0,
+                "inputRadius1": radius,
+                "inputColor0": color,
+                "inputColor1": transparent
+            ]
+        )
+        return (filter?.outputImage ?? CIImage(color: .clear)).cropped(to: outputRect)
+    }
+
+    private func makeClickRingOverlayImage(
+        outputSize: CGSize,
+        center: CGPoint,
+        progress: CGFloat
+    ) -> CIImage? {
+        let fade = max(0.45, 1 - progress)
+        let radius = clickRingBaseRadius + ((clickRingMaxRadius - clickRingBaseRadius) * progress)
+        let innerRadius = max(1, radius - clickRingSpacing)
+        let ringColor = CGColor(
+            red: clickRingColor.red,
+            green: clickRingColor.green,
+            blue: clickRingColor.blue,
+            alpha: clickRingColor.alpha * fade
+        )
+
+        let width = max(1, Int(outputSize.width.rounded()))
+        let height = max(1, Int(outputSize.height.rounded()))
+        let bitmapInfo = CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue
+        guard let context = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: bitmapInfo
+        ) else { return nil }
+
+        context.clear(CGRect(x: 0, y: 0, width: width, height: height))
+        context.setShouldAntialias(true)
+        context.setAllowsAntialiasing(true)
+        context.setLineWidth(clickRingLineWidth)
+        context.setBlendMode(.normal)
+
+        context.setStrokeColor(ringColor)
+        context.strokeEllipse(
+            in: CGRect(
+                x: center.x - radius,
+                y: center.y - radius,
+                width: radius * 2,
+                height: radius * 2
+            )
+        )
+
+        context.setStrokeColor(ringColor)
+        context.strokeEllipse(
+            in: CGRect(
+                x: center.x - innerRadius,
+                y: center.y - innerRadius,
+                width: innerRadius * 2,
+                height: innerRadius * 2
+            )
+        )
+
+        guard let cgImage = context.makeImage() else { return nil }
+        return CIImage(cgImage: cgImage).cropped(to: CGRect(origin: .zero, size: outputSize))
     }
 
     private func applyPanDeadzone(
@@ -410,6 +618,26 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         let localX = point.x - captureDisplayFrame.minX
         let localY = point.y - captureDisplayFrame.minY
         return CGPoint(x: localX * scaleX, y: localY * scaleY)
+    }
+
+    private func outputCursorPoint(
+        for screenPoint: CGPoint,
+        imageExtent: CGRect,
+        sourceRect: CGRect,
+        outputSize: CGSize
+    ) -> CGPoint? {
+        guard captureDisplayFrame.contains(screenPoint) else { return nil }
+        guard sourceRect.width > 0, sourceRect.height > 0, outputSize.width > 0, outputSize.height > 0 else {
+            return nil
+        }
+
+        let imagePoint = convertScreenPointToImagePoint(screenPoint, imageExtent: imageExtent)
+        let mappedX = (imagePoint.x - sourceRect.minX) * (outputSize.width / sourceRect.width)
+        let mappedY = (imagePoint.y - sourceRect.minY) * (outputSize.height / sourceRect.height)
+        return CGPoint(
+            x: min(max(mappedX, 0), outputSize.width),
+            y: min(max(mappedY, 0), outputSize.height)
+        )
     }
 
     private func baseCameraCropSize(in imageExtent: CGRect, outputSize: CGSize) -> CGSize {
@@ -580,6 +808,9 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         captureDisplayFrame = .zero
         currentZoomScale = zoomProfile.zoomOutScale
         currentZoomCenter = nil
+        lastHandledClickEventID = 0
+        lastClickTimestamp = nil
+        lastClickScreenLocation = nil
         isFinalizing = false
     }
 

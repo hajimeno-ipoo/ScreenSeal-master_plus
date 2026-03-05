@@ -118,6 +118,10 @@ struct MenuBarView: View {
 
         Toggle("Follow Cursor", isOn: $windowManager.followCursorRecording)
             .disabled(windowManager.canStopRecording)
+        Toggle("Cursor Highlight", isOn: $windowManager.cursorHighlightEnabled)
+            .disabled(windowManager.canStopRecording)
+        Toggle("Click Ring", isOn: $windowManager.clickRingEnabled)
+            .disabled(windowManager.canStopRecording)
     }
 
     private func promptSavePreset() {
