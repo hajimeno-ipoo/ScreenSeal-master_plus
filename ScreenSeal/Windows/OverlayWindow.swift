@@ -4,6 +4,7 @@ final class OverlayWindow: NSWindow {
     let configuration = OverlayConfiguration()
     let overlayContentView: OverlayContentView
     let windowIndex: Int
+    weak var windowManager: WindowManager?
     private var didMoveObserver: Any?
 
     var displayName: String {

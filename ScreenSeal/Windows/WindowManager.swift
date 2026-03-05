@@ -50,6 +50,7 @@ final class WindowManager: ObservableObject {
     func createWindow() {
         let defaultSize = NSRect(x: 200, y: 200, width: 300, height: 200)
         let window = OverlayWindow(contentRect: defaultSize, index: nextIndex)
+        window.windowManager = self
         nextIndex += 1
         windows.append(window)
         window.makeKeyAndOrderFront(nil)
@@ -182,6 +183,7 @@ final class WindowManager: ObservableObject {
         for snapshot in preset.windows {
             let rect = NSRect(x: snapshot.x, y: snapshot.y, width: snapshot.width, height: snapshot.height)
             let window = OverlayWindow(contentRect: rect, index: nextIndex)
+            window.windowManager = self
             nextIndex += 1
 
             if let type = MosaicType(rawValue: snapshot.mosaicType) {

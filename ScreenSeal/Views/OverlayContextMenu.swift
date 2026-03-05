@@ -158,7 +158,14 @@ private final class MenuActionTarget: NSObject {
 
     @objc func closeWindow(_ sender: NSMenuItem) {
         guard let window = sender.representedObject as? OverlayWindow else { return }
-        guard let appDelegate = NSApplication.shared.delegate as? AppDelegate else { return }
-        appDelegate.windowManager.removeWindow(window)
+        if let manager = window.windowManager {
+            manager.removeWindow(window)
+            return
+        }
+        if let appDelegate = NSApplication.shared.delegate as? AppDelegate {
+            appDelegate.windowManager.removeWindow(window)
+            return
+        }
+        window.orderOut(nil)
     }
 }
