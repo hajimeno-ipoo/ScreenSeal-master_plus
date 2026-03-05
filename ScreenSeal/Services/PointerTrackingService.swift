@@ -10,6 +10,7 @@ struct PointerSnapshot {
 }
 
 final class PointerTrackingService {
+    private let topSystemUIExclusionHeight: CGFloat = 64
     private let fps: Int
     private let stateQueue = DispatchQueue(label: "com.screenseal.pointer.state")
     private var timer: Timer?
@@ -25,7 +26,7 @@ final class PointerTrackingService {
     private var isZoomActive = false
     private var previousPrimaryButtonPressed = false
     private var zoomReleaseDeadline: CFTimeInterval = 0
-    private let zoomReleaseDelay: CFTimeInterval = 2.0
+    private let zoomReleaseDelay: CFTimeInterval = 0.9
 
     init(fps: Int = ZoomProfile.standard.fps) {
         self.fps = max(1, fps)
@@ -139,7 +140,8 @@ final class PointerTrackingService {
 
     private func isMenuBarInteraction(location: CGPoint, element: AXUIElement) -> Bool {
         if let screen = NSScreen.screens.first(where: { $0.frame.contains(location) }) {
-            let menuBarBandMinY = screen.frame.maxY - NSStatusBar.system.thickness
+            let exclusionHeight = max(NSStatusBar.system.thickness, topSystemUIExclusionHeight)
+            let menuBarBandMinY = screen.frame.maxY - exclusionHeight
             if location.y >= menuBarBandMinY {
                 return true
             }

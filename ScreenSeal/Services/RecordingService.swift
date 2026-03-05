@@ -9,6 +9,11 @@ private let recordingLogger = Logger(subsystem: "com.screenseal.app", category: 
 
 @available(macOS 15.0, *)
 final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
+    private let outputResolution = CGSize(width: 1920, height: 1080)
+    private let idleCameraScale: CGFloat = 0.6
+    private let idlePanDeadzoneRatio: CGFloat = 0.20
+    private let zoomPanDeadzoneRatio: CGFloat = 0.08
+    private let idlePanDurationMultiplier: CGFloat = 2.4
     private var stream: SCStream?
     private var writer: AVAssetWriter?
     private var videoInput: AVAssetWriterInput?
@@ -69,8 +74,8 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             let outputURL = try makeOutputURL()
             let writerBundle = try makeWriter(
                 outputURL: outputURL,
-                width: config.width,
-                height: config.height
+                width: Int(outputResolution.width),
+                height: Int(outputResolution.height)
             )
 
             let filter = SCContentFilter(display: display, excludingApplications: [], exceptingWindows: [])
@@ -214,8 +219,12 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         }
 
         let sourceImage = CIImage(cvPixelBuffer: imageBuffer)
-        let zoomedImage = applyRecordingZoom(to: sourceImage)
-        let renderBounds = CGRect(x: 0, y: 0, width: CVPixelBufferGetWidth(outputPixelBuffer), height: CVPixelBufferGetHeight(outputPixelBuffer))
+        let outputSize = CGSize(
+            width: CVPixelBufferGetWidth(outputPixelBuffer),
+            height: CVPixelBufferGetHeight(outputPixelBuffer)
+        )
+        let zoomedImage = applyRecordingZoom(to: sourceImage, outputSize: outputSize)
+        let renderBounds = CGRect(origin: .zero, size: outputSize)
         ciContext.render(zoomedImage, to: outputPixelBuffer, bounds: renderBounds, colorSpace: CGColorSpaceCreateDeviceRGB())
 
         if !pixelBufferAdaptor.append(outputPixelBuffer, withPresentationTime: presentationTime), writer.status == .failed {
@@ -234,13 +243,13 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         }
     }
 
-    private func applyRecordingZoom(to image: CIImage) -> CIImage {
+    private func applyRecordingZoom(to image: CIImage, outputSize: CGSize) -> CIImage {
         let extent = image.extent
-        guard !captureDisplayFrame.isEmpty else { return image }
+        guard !captureDisplayFrame.isEmpty, outputSize.width > 0, outputSize.height > 0 else { return image }
 
         let pointer = pointerTrackingService.snapshot
         let targetLocation = pointer.cursorLocation
-        let shouldZoom = pointer.isZoomActive && captureDisplayFrame.contains(targetLocation)
+        let shouldZoom = pointer.isZoomActive
         let targetScale: CGFloat = shouldZoom
             ? zoomProfile.zoomInScale
             : zoomProfile.zoomOutScale
@@ -255,43 +264,47 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             duration: zoomProfile.easingDuration
         )
 
-        if shouldZoom {
-            let initialCenter = currentZoomCenter ?? pointer.zoomAnchorLocation ?? targetLocation
-            currentZoomCenter = smoothPoint(
-                initialCenter,
-                toward: targetLocation,
-                elapsed: elapsed,
-                duration: zoomProfile.cursorFollowDuration
-            )
-        }
+        let cursorPoint = convertScreenPointToImagePoint(targetLocation, imageExtent: extent)
+        let initialCenter = currentZoomCenter ?? pointer.zoomAnchorLocation.map {
+            convertScreenPointToImagePoint($0, imageExtent: extent)
+        } ?? cursorPoint
+        let baseCropSize = baseCameraCropSize(in: extent, outputSize: outputSize)
+        let deadzoneRatio = shouldZoom ? zoomPanDeadzoneRatio : idlePanDeadzoneRatio
+        let deadzoneSize = CGSize(
+            width: baseCropSize.width * deadzoneRatio,
+            height: baseCropSize.height * deadzoneRatio
+        )
+        let targetCenter = applyPanDeadzone(
+            currentCenter: initialCenter,
+            targetCursor: cursorPoint,
+            deadzoneSize: deadzoneSize
+        )
+        let panDuration: TimeInterval = shouldZoom
+            ? zoomProfile.cursorFollowDuration
+            : max(zoomProfile.cursorFollowDuration * idlePanDurationMultiplier, 0.24)
+        currentZoomCenter = smoothPoint(
+            initialCenter,
+            toward: targetCenter,
+            elapsed: elapsed,
+            duration: panDuration
+        )
 
         guard let zoomCenter = currentZoomCenter else {
             return image
         }
 
-        guard currentZoomScale > zoomProfile.zoomOutScale + 0.001, shouldZoom else {
-            if currentZoomScale <= zoomProfile.zoomOutScale + 0.001 {
-                currentZoomCenter = nil
-            }
-            return image
-        }
-
-        let scaleX = extent.width / captureDisplayFrame.width
-        let scaleY = extent.height / captureDisplayFrame.height
-        let cursorLocalX = zoomCenter.x - captureDisplayFrame.minX
-        let cursorLocalY = zoomCenter.y - captureDisplayFrame.minY
-        let cursorX = cursorLocalX * scaleX
-        let cursorY = cursorLocalY * scaleY
-
-        let zoomedWidth = extent.width / currentZoomScale
-        let zoomedHeight = extent.height / currentZoomScale
+        let effectiveScale = shouldZoom
+            ? currentZoomScale
+            : max(0.01, currentZoomScale * idleCameraScale)
+        let zoomedWidth = baseCropSize.width / effectiveScale
+        let zoomedHeight = baseCropSize.height / effectiveScale
         let minX = extent.minX
         let minY = extent.minY
         let maxX = extent.maxX - zoomedWidth
         let maxY = extent.maxY - zoomedHeight
 
-        let clampedX = min(max(cursorX - (zoomedWidth / 2), minX), maxX)
-        let clampedY = min(max(cursorY - (zoomedHeight / 2), minY), maxY)
+        let clampedX = min(max(zoomCenter.x - (zoomedWidth / 2), minX), maxX)
+        let clampedY = min(max(zoomCenter.y - (zoomedHeight / 2), minY), maxY)
         let cropRect = CGRect(x: clampedX, y: clampedY, width: zoomedWidth, height: zoomedHeight)
 
         let translated = image
@@ -299,11 +312,47 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             .transformed(by: CGAffineTransform(translationX: -cropRect.origin.x, y: -cropRect.origin.y))
 
         let scaleTransform = CGAffineTransform(
-            scaleX: extent.width / cropRect.width,
-            y: extent.height / cropRect.height
+            scaleX: outputSize.width / cropRect.width,
+            y: outputSize.height / cropRect.height
         )
         let scaled = translated.transformed(by: scaleTransform)
-        return scaled.cropped(to: CGRect(x: 0, y: 0, width: extent.width, height: extent.height))
+        return scaled.cropped(to: CGRect(origin: .zero, size: outputSize))
+    }
+
+    private func applyPanDeadzone(
+        currentCenter: CGPoint,
+        targetCursor: CGPoint,
+        deadzoneSize: CGSize
+    ) -> CGPoint {
+        let deltaX = targetCursor.x - currentCenter.x
+        let deltaY = targetCursor.y - currentCenter.y
+        let withinDeadzoneX = abs(deltaX) <= deadzoneSize.width
+        let withinDeadzoneY = abs(deltaY) <= deadzoneSize.height
+        if withinDeadzoneX && withinDeadzoneY {
+            return currentCenter
+        }
+        return targetCursor
+    }
+
+    private func convertScreenPointToImagePoint(_ point: CGPoint, imageExtent: CGRect) -> CGPoint {
+        let scaleX = imageExtent.width / captureDisplayFrame.width
+        let scaleY = imageExtent.height / captureDisplayFrame.height
+        let localX = point.x - captureDisplayFrame.minX
+        let localY = point.y - captureDisplayFrame.minY
+        return CGPoint(x: localX * scaleX, y: localY * scaleY)
+    }
+
+    private func baseCameraCropSize(in imageExtent: CGRect, outputSize: CGSize) -> CGSize {
+        let aspect = outputSize.width / outputSize.height
+        var width = min(imageExtent.width, outputSize.width)
+        var height = width / aspect
+
+        if height > imageExtent.height {
+            height = imageExtent.height
+            width = height * aspect
+        }
+
+        return CGSize(width: width, height: height)
     }
 
     private func smoothValue(
