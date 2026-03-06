@@ -84,7 +84,11 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         )
     }
 
-    func start(target: ResolvedRecordingTarget, excludedWindows: [SCWindow] = []) async throws -> URL {
+    func start(
+        target: ResolvedRecordingTarget,
+        excludedApplications: [SCRunningApplication] = [],
+        exceptingWindows: [SCWindow] = []
+    ) async throws -> URL {
         guard case .idle = state else {
             throw RecordingError.invalidState
         }
@@ -120,7 +124,11 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
                 }
                 config.width = Int(CGFloat(display.width) * scaleFactor)
                 config.height = Int(CGFloat(display.height) * scaleFactor)
-                filter = SCContentFilter(display: display, excludingApplications: [], exceptingWindows: excludedWindows)
+                filter = SCContentFilter(
+                    display: display,
+                    excludingApplications: excludedApplications,
+                    exceptingWindows: exceptingWindows
+                )
                 captureFrame = frame
 
             case .window(let windowID, let windowFrame, _):
@@ -160,7 +168,11 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
                 config.sourceRect = localRect
                 config.width = max(1, Int(localRect.width * scaleFactor))
                 config.height = max(1, Int(localRect.height * scaleFactor))
-                filter = SCContentFilter(display: display, excludingWindows: excludedWindows)
+                filter = SCContentFilter(
+                    display: display,
+                    excludingApplications: excludedApplications,
+                    exceptingWindows: exceptingWindows
+                )
                 captureFrame = selection.rect
             }
 

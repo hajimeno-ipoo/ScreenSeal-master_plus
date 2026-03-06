@@ -506,7 +506,6 @@ final class WindowManager: ObservableObject {
     private var countdownTask: Task<Void, Never>?
     private var countdownOverlayWindow: CountdownOverlayWindow?
     private var regionRecordingOverlayWindow: RegionRecordingOverlayWindow?
-    private var excludedRecordingWindowIDs: Set<CGWindowID> = []
 
     private var recordingServiceRef: AnyObject?
 
@@ -812,10 +811,17 @@ final class WindowManager: ObservableObject {
         Task {
             do {
                 let shareableContent = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
-                let excludedWindows = await MainActor.run {
-                    self.excludedRecordingWindows(from: shareableContent)
+                let recordingFilterContext = await MainActor.run {
+                    (
+                        excludedApplications: self.excludedRecordingApplications(from: shareableContent),
+                        exceptingWindows: self.exceptedRecordingWindows(from: shareableContent)
+                    )
                 }
-                _ = try await service.start(target: target, excludedWindows: excludedWindows)
+                _ = try await service.start(
+                    target: target,
+                    excludedApplications: recordingFilterContext.excludedApplications,
+                    exceptingWindows: recordingFilterContext.exceptingWindows
+                )
             } catch {
                 await MainActor.run {
                     self.recordingServiceRef = nil
@@ -871,7 +877,6 @@ final class WindowManager: ObservableObject {
 
         let window = RegionRecordingOverlayWindow(frame: displayFrame, selectionRect: localRect)
         regionRecordingOverlayWindow = window
-        excludedRecordingWindowIDs = [CGWindowID(window.windowNumber)]
         window.orderFrontRegardless()
     }
 
@@ -879,12 +884,18 @@ final class WindowManager: ObservableObject {
         regionRecordingOverlayWindow?.orderOut(nil)
         regionRecordingOverlayWindow?.close()
         regionRecordingOverlayWindow = nil
-        excludedRecordingWindowIDs.removeAll()
     }
 
     @available(macOS 15.0, *)
-    private func excludedRecordingWindows(from content: SCShareableContent) -> [SCWindow] {
-        content.windows.filter { excludedRecordingWindowIDs.contains($0.windowID) }
+    private func excludedRecordingApplications(from content: SCShareableContent) -> [SCRunningApplication] {
+        let selfBundleID = Bundle.main.bundleIdentifier ?? ""
+        return content.applications.filter { $0.bundleIdentifier == selfBundleID }
+    }
+
+    @available(macOS 15.0, *)
+    private func exceptedRecordingWindows(from content: SCShareableContent) -> [SCWindow] {
+        let overlayWindowIDs = Set(windows.map { CGWindowID($0.windowNumber) })
+        return content.windows.filter { overlayWindowIDs.contains($0.windowID) }
     }
 
     private static func saveColor(_ color: CGColor, forKey key: String) {
