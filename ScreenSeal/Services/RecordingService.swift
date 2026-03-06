@@ -491,7 +491,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
     )
 
     private func applyRecordingTransform(to image: CIImage, outputSize: CGSize, pointer: PointerSnapshot) -> TransformResult {
-        if case .window = activeTarget, !pointer.isZoomActive {
+        if case .window = activeTarget, !pointer.isZoomActive, !followCursorCameraEnabled {
             let extent = image.extent
             let cursor = outputCursorPoint(for: pointer.cursorLocation, imageExtent: extent, sourceRect: extent, outputSize: outputSize)
             let clickPoint = pointer.lastClickLocation.flatMap {

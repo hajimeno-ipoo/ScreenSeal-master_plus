@@ -688,7 +688,14 @@ final class WindowManager: ObservableObject {
     @Published var recordingState: RecordingState = .idle
     @Published var recordingTarget: RecordingTarget = .display
     @Published private(set) var selectedWindowDisplayName: String?
-    @Published var followCursorRecording = true
+    @Published var followCursorRecording = false {
+        didSet {
+            guard followCursorRecording else { return }
+            if recordingTarget != .display {
+                selectDisplayRecordingTarget()
+            }
+        }
+    }
     @Published var cursorHighlightEnabled = true
     @Published var clickRingEnabled = true
     @Published private(set) var isSelectingRecordingRegion = false
@@ -887,7 +894,7 @@ final class WindowManager: ObservableObject {
     }
 
     func beginSystemWindowSelection() {
-        guard !isRecordingPreparationActive else { return }
+        guard !isRecordingPreparationActive, !followCursorRecording else { return }
         let excludedWindowIDs = windows.map { Int($0.windowNumber) }
         windowSelectionPickerCoordinator.presentPicker(
             excludedBundleIDs: [Bundle.main.bundleIdentifier ?? ""],
@@ -902,7 +909,7 @@ final class WindowManager: ObservableObject {
     }
 
     func beginRecordingRegionSelection() {
-        guard !isRecordingPreparationActive else { return }
+        guard !isRecordingPreparationActive, !followCursorRecording else { return }
 
         isSelectingRecordingRegion = true
         dismissRegionRecordingOverlay()

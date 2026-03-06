@@ -131,6 +131,7 @@ struct MenuBarView: View {
             Button("Choose Window...") {
                 windowManager.beginSystemWindowSelection()
             }
+            .disabled(windowManager.isRecordingPreparationActive || windowManager.followCursorRecording)
 
             if case .window = windowManager.recordingTarget,
                let selectedWindowDisplayName = windowManager.selectedWindowDisplayName {
@@ -144,6 +145,7 @@ struct MenuBarView: View {
             } label: {
                 recordingTargetMenuLabel("Select Region...", selected: windowManager.isRegionRecordingTarget)
             }
+            .disabled(windowManager.isRecordingPreparationActive || windowManager.followCursorRecording)
         }
         .disabled(windowManager.isRecordingPreparationActive)
 
