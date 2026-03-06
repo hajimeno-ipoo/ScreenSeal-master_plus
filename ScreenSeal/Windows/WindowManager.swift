@@ -30,13 +30,16 @@ private final class WindowSelectionPickerCoordinator: NSObject, SCContentSharing
         picker.present(using: .window)
     }
 
-    func contentSharingPicker(_ picker: SCContentSharingPicker, didCancelFor stream: SCStream?) {}
+    func contentSharingPicker(_ picker: SCContentSharingPicker, didCancelFor stream: SCStream?) {
+        picker.isActive = false
+    }
 
     func contentSharingPicker(_ picker: SCContentSharingPicker, didUpdateWith filter: SCContentFilter, for stream: SCStream?) {
         Task { [weak self] in
             guard let self else { return }
             guard let selection = try await Self.resolveSelection(from: filter) else { return }
             await MainActor.run {
+                picker.isActive = false
                 self.windowManager?.applySystemWindowSelection(selection)
             }
         }
@@ -849,22 +852,27 @@ final class WindowManager: ObservableObject {
             do {
                 _ = try await service.stop()
                 await MainActor.run {
+                    SCContentSharingPicker.shared.isActive = false
                     self.recordingServiceRef = nil
                     self.recordingState = .idle
                     self.recordingTarget = .display
                     self.dismissRegionRecordingOverlay()
+                    self.removeAllWindows()
                 }
             } catch {
                 do {
                     _ = try await service.stop()
                     await MainActor.run {
+                        SCContentSharingPicker.shared.isActive = false
                         self.recordingServiceRef = nil
                         self.recordingState = .idle
                         self.recordingTarget = .display
                         self.dismissRegionRecordingOverlay()
+                        self.removeAllWindows()
                     }
                 } catch {
                     await MainActor.run {
+                        SCContentSharingPicker.shared.isActive = false
                         self.recordingServiceRef = nil
                         self.recordingState = .failed(message: "録画停止に失敗しました")
                         self.recordingTarget = .display
