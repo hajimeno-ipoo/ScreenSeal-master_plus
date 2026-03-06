@@ -6,6 +6,75 @@ import os.log
 
 private let logger = Logger(subsystem: "com.screenseal.app", category: "WindowManager")
 
+private final class WindowSelectionPickerCoordinator: NSObject, SCContentSharingPickerObserver {
+    weak var windowManager: WindowManager?
+
+    override init() {
+        super.init()
+        SCContentSharingPicker.shared.add(self)
+    }
+
+    deinit {
+        SCContentSharingPicker.shared.remove(self)
+    }
+
+    func presentPicker(excludedBundleIDs: [String], excludedWindowIDs: [Int]) {
+        let picker = SCContentSharingPicker.shared
+        var configuration = SCContentSharingPickerConfiguration()
+        configuration.allowedPickerModes = .singleWindow
+        configuration.allowsChangingSelectedContent = false
+        configuration.excludedBundleIDs = excludedBundleIDs
+        configuration.excludedWindowIDs = excludedWindowIDs
+        picker.defaultConfiguration = configuration
+        picker.isActive = true
+        picker.present(using: .window)
+    }
+
+    func contentSharingPicker(_ picker: SCContentSharingPicker, didCancelFor stream: SCStream?) {}
+
+    func contentSharingPicker(_ picker: SCContentSharingPicker, didUpdateWith filter: SCContentFilter, for stream: SCStream?) {
+        Task { [weak self] in
+            guard let self else { return }
+            guard let selection = try await Self.resolveSelection(from: filter) else { return }
+            await MainActor.run {
+                self.windowManager?.applySystemWindowSelection(selection)
+            }
+        }
+    }
+
+    func contentSharingPickerStartDidFailWithError(_ error: Error) {
+        logger.error("Window picker failed to start: \(error.localizedDescription)")
+    }
+
+    private static func resolveSelection(from filter: SCContentFilter) async throws -> (windowID: CGWindowID, displayName: String)? {
+        if #available(macOS 15.2, *), let window = filter.includedWindows.first {
+            return (window.windowID, makeDisplayName(for: window))
+        }
+
+        let info = SCShareableContent.info(for: filter)
+        guard info.style == .window else { return nil }
+        let content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
+        guard let window = content.windows.first(where: { approximatelyMatches($0.frame, info.contentRect) }) else {
+            return nil
+        }
+        return (window.windowID, makeDisplayName(for: window))
+    }
+
+    private static func approximatelyMatches(_ lhs: CGRect, _ rhs: CGRect) -> Bool {
+        abs(lhs.origin.x - rhs.origin.x) < 2 &&
+        abs(lhs.origin.y - rhs.origin.y) < 2 &&
+        abs(lhs.size.width - rhs.size.width) < 2 &&
+        abs(lhs.size.height - rhs.size.height) < 2
+    }
+
+    private static func makeDisplayName(for window: SCWindow) -> String {
+        let appName = window.owningApplication?.applicationName ?? "Window"
+        let cleanedTitle = (window.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanedTitle.isEmpty else { return appName }
+        return "\(appName) - \(cleanedTitle)"
+    }
+}
+
 enum RecordingTarget: Equatable {
     case display
     case window(windowID: CGWindowID)
@@ -483,10 +552,10 @@ final class WindowManager: ObservableObject {
     @Published var captureError: String?
     @Published var recordingState: RecordingState = .idle
     @Published var recordingTarget: RecordingTarget = .display
+    @Published private(set) var selectedWindowDisplayName: String?
     @Published var followCursorRecording = true
     @Published var cursorHighlightEnabled = true
     @Published var clickRingEnabled = true
-    @Published private(set) var recordingWindowOptions: [RecordingWindowOption] = []
     @Published private(set) var isSelectingRecordingRegion = false
     @Published var cursorHighlightColor: CGColor {
         didSet { Self.saveColor(cursorHighlightColor, forKey: Self.cursorHighlightColorKey) }
@@ -503,6 +572,7 @@ final class WindowManager: ObservableObject {
     private var wakeObserver: Any?
     private let colorPanelCoordinator = ColorPanelCoordinator()
     private let regionSelectionCoordinator = RegionSelectionCoordinator()
+    private let windowSelectionPickerCoordinator = WindowSelectionPickerCoordinator()
     private var countdownTask: Task<Void, Never>?
     private var countdownOverlayWindow: CountdownOverlayWindow?
     private var regionRecordingOverlayWindow: RegionRecordingOverlayWindow?
@@ -549,9 +619,7 @@ final class WindowManager: ObservableObject {
         ) { [weak self] _ in
             self?.handleWake()
         }
-        Task {
-            await refreshRecordingWindowOptions()
-        }
+        windowSelectionPickerCoordinator.windowManager = self
 
     }
 
@@ -676,11 +744,22 @@ final class WindowManager: ObservableObject {
 
     func selectDisplayRecordingTarget() {
         recordingTarget = .display
+        selectedWindowDisplayName = nil
         dismissRegionRecordingOverlay()
     }
 
-    func selectWindowRecordingTarget(_ option: RecordingWindowOption) {
-        recordingTarget = .window(windowID: option.windowID)
+    func beginSystemWindowSelection() {
+        guard !isRecordingPreparationActive else { return }
+        let excludedWindowIDs = windows.map { Int($0.windowNumber) }
+        windowSelectionPickerCoordinator.presentPicker(
+            excludedBundleIDs: [Bundle.main.bundleIdentifier ?? ""],
+            excludedWindowIDs: excludedWindowIDs
+        )
+    }
+
+    func applySystemWindowSelection(_ selection: (windowID: CGWindowID, displayName: String)) {
+        recordingTarget = .window(windowID: selection.windowID)
+        selectedWindowDisplayName = selection.displayName
         dismissRegionRecordingOverlay()
     }
 
@@ -692,6 +771,7 @@ final class WindowManager: ObservableObject {
         regionSelectionCoordinator.present { [weak self] selection in
             self?.isSelectingRecordingRegion = false
             self?.recordingTarget = .region(selection)
+            self?.selectedWindowDisplayName = nil
             self?.showRegionRecordingOverlay(for: selection)
         } onCancel: { [weak self] in
             self?.isSelectingRecordingRegion = false
@@ -711,20 +791,6 @@ final class WindowManager: ObservableObject {
     var isRegionRecordingTarget: Bool {
         if case .region = recordingTarget { return true }
         return false
-    }
-
-    func refreshRecordingWindowOptions() async {
-        do {
-            let content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
-            let options = await MainActor.run {
-                Self.makeRecordingWindowOptions(from: content)
-            }
-            await MainActor.run {
-                self.recordingWindowOptions = options
-            }
-        } catch {
-            logger.warning("Failed to refresh recording window options: \(error.localizedDescription)")
-        }
     }
 
     func openCursorHighlightColorPanel() {
@@ -936,8 +1002,7 @@ final class WindowManager: ObservableObject {
                 throw RecordingTargetResolutionError.windowNotFound
             }
             let fallbackDisplayID = await MainActor.run(body: { Self.displayID(for: window.frame) })
-            guard let displayID = recordingWindowOptions.first(where: { $0.windowID == windowID })?.displayID
-                    ?? fallbackDisplayID,
+            guard let displayID = fallbackDisplayID,
                   let displayFrame = await MainActor.run(body: {
                       NSScreen.screens.first(where: { $0.displayID == displayID })?.frame
                   }) else {
@@ -963,36 +1028,6 @@ final class WindowManager: ObservableObject {
                 throw RecordingTargetResolutionError.regionDisplayNotFound
             }
             return .region(RecordingRegionSelection(displayID: selection.displayID, rect: clampedRect))
-        }
-    }
-
-    private static func makeRecordingWindowOptions(from content: SCShareableContent) -> [RecordingWindowOption] {
-        let selfBundleID = Bundle.main.bundleIdentifier ?? ""
-
-        return content.windows.compactMap { window in
-            guard window.windowLayer == 0,
-                  window.isOnScreen,
-                  window.frame.width >= 80,
-                  window.frame.height >= 60,
-                  let application = window.owningApplication,
-                  application.bundleIdentifier != selfBundleID,
-                  let displayID = displayID(for: window.frame) else {
-                return nil
-            }
-
-            return RecordingWindowOption(
-                windowID: window.windowID,
-                appName: application.applicationName,
-                title: window.title ?? "",
-                frame: window.frame,
-                displayID: displayID
-            )
-        }
-        .sorted {
-            if $0.appName != $1.appName {
-                return $0.appName.localizedCaseInsensitiveCompare($1.appName) == .orderedAscending
-            }
-            return $0.menuTitle.localizedCaseInsensitiveCompare($1.menuTitle) == .orderedAscending
         }
     }
 

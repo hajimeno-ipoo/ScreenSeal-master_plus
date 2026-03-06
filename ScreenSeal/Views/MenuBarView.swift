@@ -128,28 +128,15 @@ struct MenuBarView: View {
                 recordingTargetMenuLabel("Full Display", selected: windowManager.recordingTarget == .display)
             }
 
-            Menu("Window") {
-                Button("Refresh Window List") {
-                    Task {
-                        await windowManager.refreshRecordingWindowOptions()
-                    }
-                }
+            Button("Choose Window...") {
+                windowManager.beginSystemWindowSelection()
+            }
 
-                if windowManager.recordingWindowOptions.isEmpty {
-                    Button("No windows available") { }
-                        .disabled(true)
-                } else {
-                    ForEach(windowManager.recordingWindowOptions) { option in
-                        Button {
-                            windowManager.selectWindowRecordingTarget(option)
-                        } label: {
-                            recordingTargetMenuLabel(
-                                option.menuTitle,
-                                selected: windowManager.isWindowRecordingTarget(option.windowID)
-                            )
-                        }
-                    }
-                }
+            if case .window = windowManager.recordingTarget,
+               let selectedWindowDisplayName = windowManager.selectedWindowDisplayName {
+                Text("Selected Window: \(selectedWindowDisplayName)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
 
             Button {

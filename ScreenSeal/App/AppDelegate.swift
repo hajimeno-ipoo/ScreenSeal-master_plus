@@ -17,7 +17,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         Task {
             await permissionManager.requestPermissionIfNeeded()
-            await windowManager.refreshRecordingWindowOptions()
         }
     }
 
