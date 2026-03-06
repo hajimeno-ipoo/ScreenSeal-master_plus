@@ -934,6 +934,9 @@ final class WindowManager: ObservableObject {
                     self.isTakingScreenshot = false
                     self.screenshotStatusIsFailure = false
                     self.screenshotStatusMessage = "Screenshot saved: \(outputURL.lastPathComponent)"
+                    if case .region = self.recordingTarget {
+                        self.selectDisplayRecordingTarget()
+                    }
                 }
             } catch {
                 await MainActor.run {

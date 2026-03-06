@@ -18,7 +18,8 @@
 - git diff --check -- ScreenSeal/App/AppDelegate.swift ScreenSeal/Views/MenuBarView.swift ScreenSeal/Windows/WindowManager.swift ScreenSeal/Services/ScreenCaptureService.swift README.md README.ja.md FOR[hazimeno_ipoo].md
 
 リスク:
-- 実機では権限未許可時の文言と、Window/Region の静止画にモザイク窓が期待通り重なるかを最終確認したい。
+- 実機では権限未許可時の文言と、Window の静止画にモザイク窓が期待通り重なるかを最終確認したい。
+- Region スクショ成功後は Full Display に戻して選択枠を解除するよう更新済み。
 
 ロールバック方法:
 - captureMode と ScreenshotService 追加分、AppDelegate/MenuBarView の分岐、README/FOR 更新を戻す。
