@@ -32,20 +32,25 @@ private final class WindowSelectionPickerCoordinator: NSObject, SCContentSharing
 
     func contentSharingPicker(_ picker: SCContentSharingPicker, didCancelFor stream: SCStream?) {
         picker.isActive = false
+        windowManager?.setOverlayWindowsInteractive(true)
     }
 
     func contentSharingPicker(_ picker: SCContentSharingPicker, didUpdateWith filter: SCContentFilter, for stream: SCStream?) {
         Task { [weak self] in
             guard let self else { return }
-            guard let selection = try await Self.resolveSelection(from: filter) else { return }
+            let selection = try await Self.resolveSelection(from: filter)
             await MainActor.run {
                 picker.isActive = false
-                self.windowManager?.applySystemWindowSelection(selection)
+                self.windowManager?.setOverlayWindowsInteractive(true)
+                if let selection {
+                    self.windowManager?.applySystemWindowSelection(selection)
+                }
             }
         }
     }
 
     func contentSharingPickerStartDidFailWithError(_ error: Error) {
+        windowManager?.setOverlayWindowsInteractive(true)
         logger.error("Window picker failed to start: \(error.localizedDescription)")
     }
 
@@ -903,6 +908,7 @@ final class WindowManager: ObservableObject {
 
     func beginSystemWindowSelection() {
         guard !isRecordingPreparationActive, !followCursorRecording else { return }
+        setOverlayWindowsInteractive(false)
         let excludedWindowIDs = windows.map { Int($0.windowNumber) }
         windowSelectionPickerCoordinator.presentPicker(
             excludedBundleIDs: [Bundle.main.bundleIdentifier ?? ""],
@@ -1147,6 +1153,12 @@ final class WindowManager: ObservableObject {
             return fallback
         }
         return normalizedColor.cgColor
+    }
+
+    fileprivate func setOverlayWindowsInteractive(_ interactive: Bool) {
+        for window in windows {
+            window.ignoresMouseEvents = !interactive
+        }
     }
 
     @available(macOS 15.0, *)
