@@ -172,6 +172,21 @@ struct MenuBarView: View {
         }
         .disabled(windowManager.isCaptureModeSelectionDisabled)
 
+        Menu("Screenshot Click Action") {
+            Button {
+                windowManager.screenshotOpenAction = .preview
+            } label: {
+                selectionMenuLabel("Preview", selected: windowManager.screenshotOpenAction == .preview)
+            }
+
+            Button {
+                windowManager.screenshotOpenAction = .finder
+            } label: {
+                selectionMenuLabel("Finder", selected: windowManager.screenshotOpenAction == .finder)
+            }
+        }
+        .disabled(windowManager.isTakingScreenshot)
+
         Toggle("Follow Cursor", isOn: $windowManager.followCursorRecording)
             .disabled(windowManager.recordingOptionsDisabled)
         Toggle("Cursor Highlight", isOn: $windowManager.cursorHighlightEnabled)

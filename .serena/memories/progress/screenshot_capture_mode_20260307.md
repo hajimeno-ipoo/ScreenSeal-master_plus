@@ -4,11 +4,12 @@
 - Capture Mode を追加し、Record / Screenshot を切り替えられるようにした。
 - Screenshot モードでは Full Display / Window / Select Region を使って PNG を `~/Pictures/ScreenSeal/` に保存する。
 - Screenshot モードでは Follow Cursor / Cursor Highlight / Click Ring / 色設定を無効化した。
+- スクショ成功後は画面上にサムネイルを一時表示し、クリック時の開き先を Finder / Preview から選べるようにした。
 
 内部実装:
-- WindowManager に captureMode、スクリーンショット状態、共通の primary action を追加した。
+- WindowManager に captureMode、スクリーンショット状態、スクショ後サムネイル表示、クリック動作設定を追加した。
 - ScreenCaptureService.swift に ScreenshotService を追加し、SCScreenshotManager で display/window/region の1枚撮影を実装した。
-- AppDelegate と MenuBarView を更新し、右隣ボタンの icon/tooltip とメニューの表示分岐を mode 連動にした。
+- AppDelegate と MenuBarView を更新し、右隣ボタンの icon/tooltip、メニューの表示分岐、Screenshot Click Action 設定を mode 連動にした。
 
 影響範囲:
 - メニューバーUI、常駐ボタン、対象選択の無効条件、ScreenCaptureKit を使う静止画保存。

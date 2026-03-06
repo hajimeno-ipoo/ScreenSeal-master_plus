@@ -124,13 +124,19 @@ private final class StreamOutput: NSObject, SCStreamOutput, @unchecked Sendable 
 }
 
 @available(macOS 14.0, *)
+struct ScreenshotCaptureResult {
+    let outputURL: URL
+    let image: CGImage
+}
+
+@available(macOS 14.0, *)
 final class ScreenshotService {
     func capture(
         target: ResolvedRecordingTarget,
         excludedApplications: [SCRunningApplication] = [],
         exceptingWindows: [SCWindow] = [],
         overlayWindowIDs: [CGWindowID] = []
-    ) async throws -> URL {
+    ) async throws -> ScreenshotCaptureResult {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
         let configuration = SCStreamConfiguration()
         configuration.pixelFormat = kCVPixelFormatType_32BGRA
@@ -212,7 +218,7 @@ final class ScreenshotService {
         let outputURL = try makeOutputURL()
         try savePNG(image, to: outputURL)
         screenshotLogger.info("Screenshot saved: \(outputURL.path)")
-        return outputURL
+        return ScreenshotCaptureResult(outputURL: outputURL, image: image)
     }
 
     private func captureImage(
