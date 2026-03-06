@@ -38,6 +38,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
     private let clickRingSpacing: CGFloat = 30
     private let clickRingLineWidth: CGFloat = 6
     private let clickRingColor: NSColor
+    private var activeTarget: ResolvedRecordingTarget?
     private var stream: SCStream?
     private var writer: AVAssetWriter?
     private var videoInput: AVAssetWriterInput?
@@ -57,6 +58,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
     private var lastClickTimestamp: CFTimeInterval?
     private var lastClickScreenLocation: CGPoint?
     private var isFinalizing = false
+    private var remainingWindowDebugLogs = 0
 
     private(set) var state: RecordingState = .idle {
         didSet { onStateChange?(state) }
@@ -141,8 +143,6 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
                 }
                 config.width = max(1, Int(window.frame.width * scaleFactor))
                 config.height = max(1, Int(window.frame.height * scaleFactor))
-                config.ignoreShadowsSingleWindow = true
-                config.ignoreGlobalClipSingleWindow = true
                 filter = SCContentFilter(desktopIndependentWindow: window)
                 captureFrame = windowFrame
 
@@ -204,6 +204,11 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             self.stream = stream
             self.lastOutputURL = outputURL
             self.captureDisplayFrame = captureFrame
+            self.activeTarget = target
+            self.remainingWindowDebugLogs = {
+                if case .window = target { return 3 }
+                return 0
+            }()
             self.sessionStarted = false
             self.currentZoomScale = zoomProfile.zoomOutScale
             self.currentZoomCenter = nil
@@ -334,7 +339,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             return
         }
 
-        let sourceImage = CIImage(cvPixelBuffer: imageBuffer)
+        let sourceImage = normalizedSourceImage(from: sampleBuffer, imageBuffer: imageBuffer)
         let pointer = pointerTrackingService.snapshot
         let outputSize = CGSize(
             width: CVPixelBufferGetWidth(outputPixelBuffer),
@@ -342,6 +347,12 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         )
         let transformed = applyRecordingTransform(to: sourceImage, outputSize: outputSize, pointer: pointer)
         let now = CACurrentMediaTime()
+        logWindowDebugFrameIfNeeded(
+            sampleBuffer: sampleBuffer,
+            sourceImage: sourceImage,
+            transformed: transformed,
+            outputSize: outputSize
+        )
         let effectedImage = applyCursorEffects(
             to: transformed.image,
             outputSize: outputSize,
@@ -371,6 +382,106 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         }
     }
 
+    private func logWindowDebugFrameIfNeeded(
+        sampleBuffer: CMSampleBuffer,
+        sourceImage: CIImage,
+        transformed: TransformResult,
+        outputSize: CGSize
+    ) {
+        guard remainingWindowDebugLogs > 0 else { return }
+        guard case .window(let windowID, let windowFrame, _) = activeTarget else { return }
+
+        remainingWindowDebugLogs -= 1
+        let attachments = sampleBufferAttachments(from: sampleBuffer)
+        let contentRectText = attachments.contentRect.map(Self.rectDescription) ?? "nil"
+        let screenRectText = attachments.screenRect.map(Self.rectDescription) ?? "nil"
+        let contentScaleText = attachments.contentScale.map { String(format: "%.3f", $0) } ?? "nil"
+        let scaleFactorText = attachments.scaleFactor.map { String(format: "%.3f", $0) } ?? "nil"
+
+        recordingLogger.info(
+            """
+            WindowDebug windowID=\(windowID) windowFrame=\(Self.rectDescription(windowFrame)) \
+            captureDisplayFrame=\(Self.rectDescription(self.captureDisplayFrame)) sourceExtent=\(Self.rectDescription(sourceImage.extent)) \
+            imageExtent=\(Self.rectDescription(transformed.imageExtent)) sourceRect=\(Self.rectDescription(transformed.sourceRect)) \
+            outputSize=\(Self.sizeDescription(outputSize)) contentRect=\(contentRectText) screenRect=\(screenRectText) \
+            contentScale=\(contentScaleText) scaleFactor=\(scaleFactorText)
+            """
+        )
+    }
+
+    private func sampleBufferAttachments(from sampleBuffer: CMSampleBuffer) -> (
+        contentRect: CGRect?,
+        screenRect: CGRect?,
+        contentScale: Double?,
+        scaleFactor: Double?
+    ) {
+        guard let attachmentsArray = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
+              let attachments = attachmentsArray.first else {
+            return (nil, nil, nil, nil)
+        }
+
+        return (
+            rectValue(from: attachments[.contentRect]),
+            rectValue(from: attachments[.screenRect]),
+            doubleValue(from: attachments[.contentScale]),
+            doubleValue(from: attachments[.scaleFactor])
+        )
+    }
+
+    private func rectValue(from value: Any?) -> CGRect? {
+        guard let value else { return nil }
+        if let rect = value as? CGRect {
+            return rect
+        }
+        if let dictionary = value as? NSDictionary {
+            return CGRect(dictionaryRepresentation: dictionary)
+        }
+        return nil
+    }
+
+    private func doubleValue(from value: Any?) -> Double? {
+        if let number = value as? NSNumber {
+            return number.doubleValue
+        }
+        if let value = value as? Double {
+            return value
+        }
+        if let value = value as? CGFloat {
+            return Double(value)
+        }
+        return nil
+    }
+
+    private static func rectDescription(_ rect: CGRect) -> String {
+        String(format: "(x:%.2f y:%.2f w:%.2f h:%.2f)", rect.origin.x, rect.origin.y, rect.size.width, rect.size.height)
+    }
+
+    private static func sizeDescription(_ size: CGSize) -> String {
+        String(format: "(w:%.2f h:%.2f)", size.width, size.height)
+    }
+
+    private func normalizedSourceImage(from sampleBuffer: CMSampleBuffer, imageBuffer: CVImageBuffer) -> CIImage {
+        let image = CIImage(cvPixelBuffer: imageBuffer)
+        let attachments = sampleBufferAttachments(from: sampleBuffer)
+        guard let contentRect = attachments.contentRect else {
+            return image
+        }
+
+        let scaleFactor = CGFloat(attachments.scaleFactor ?? 1.0)
+        let pixelContentRect = CGRect(
+            x: contentRect.origin.x * scaleFactor,
+            y: contentRect.origin.y * scaleFactor,
+            width: contentRect.size.width * scaleFactor,
+            height: contentRect.size.height * scaleFactor
+        )
+
+        let translatedImage = image
+            .cropped(to: pixelContentRect)
+            .transformed(by: CGAffineTransform(translationX: -pixelContentRect.origin.x, y: -pixelContentRect.origin.y))
+
+        return translatedImage
+    }
+
     private typealias TransformResult = (
         image: CIImage,
         cursorPoint: CGPoint?,
@@ -380,6 +491,15 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
     )
 
     private func applyRecordingTransform(to image: CIImage, outputSize: CGSize, pointer: PointerSnapshot) -> TransformResult {
+        if case .window = activeTarget, !pointer.isZoomActive {
+            let extent = image.extent
+            let cursor = outputCursorPoint(for: pointer.cursorLocation, imageExtent: extent, sourceRect: extent, outputSize: outputSize)
+            let clickPoint = pointer.lastClickLocation.flatMap {
+                outputCursorPoint(for: $0, imageExtent: extent, sourceRect: extent, outputSize: outputSize)
+            }
+            return (image, cursor, clickPoint, extent, extent)
+        }
+
         if followCursorCameraEnabled {
             return applyFollowCursorCamera(to: image, outputSize: outputSize, pointer: pointer)
         }
@@ -907,6 +1027,8 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         videoInput = nil
         audioInput = nil
         pixelBufferAdaptor = nil
+        activeTarget = nil
+        remainingWindowDebugLogs = 0
         sessionStarted = false
         captureDisplayFrame = .zero
         currentZoomScale = zoomProfile.zoomOutScale

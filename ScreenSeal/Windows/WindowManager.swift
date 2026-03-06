@@ -111,8 +111,8 @@ enum ResolvedRecordingTarget: Equatable {
         switch self {
         case .display(_, let frame):
             return CGPoint(x: frame.midX, y: frame.midY)
-        case .window(_, _, let displayFrame):
-            return CGPoint(x: displayFrame.midX, y: displayFrame.midY)
+        case .window(_, let windowFrame, _):
+            return CGPoint(x: windowFrame.midX, y: windowFrame.midY)
         case .region(let selection):
             return CGPoint(x: selection.rect.midX, y: selection.rect.midY)
         }
@@ -389,7 +389,27 @@ private final class RegionSelectionOverlayWindow: NSWindow {
 }
 
 private final class RegionRecordingOverlayView: NSView {
+    private enum DragHandle: CaseIterable {
+        case topLeft
+        case top
+        case topRight
+        case right
+        case bottomRight
+        case bottom
+        case bottomLeft
+        case left
+    }
+
+    private static let handleSize: CGFloat = 12
+    private static let minimumSelectionSize: CGFloat = 80
+
     private var selectionRect: CGRect
+    private var isEditable = false
+    private var activeHandle: DragHandle?
+    private var dragStartPoint: CGPoint?
+    private var dragStartRect: CGRect = .zero
+
+    var onSelectionChanged: ((CGRect) -> Void)?
 
     init(frame frameRect: NSRect, selectionRect: CGRect) {
         self.selectionRect = selectionRect
@@ -420,18 +440,126 @@ private final class RegionRecordingOverlayView: NSView {
         innerPath.setLineDash([6, 6], count: 2, phase: 3)
         NSColor.white.withAlphaComponent(0.8).setStroke()
         innerPath.stroke()
+
+        guard isEditable else { return }
+        for handleRect in handleRects.values {
+            let path = NSBezierPath(ovalIn: handleRect)
+            NSColor.systemBlue.setFill()
+            path.fill()
+            NSColor.white.setStroke()
+            path.lineWidth = 1.5
+            path.stroke()
+        }
     }
 
     func update(selectionRect: CGRect) {
         self.selectionRect = selectionRect
         needsDisplay = true
     }
+
+    func setEditable(_ isEditable: Bool) {
+        self.isEditable = isEditable
+        needsDisplay = true
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard isEditable else { return }
+        let point = convert(event.locationInWindow, from: nil)
+        guard let handle = hitHandle(at: point) else { return }
+
+        activeHandle = handle
+        dragStartPoint = point
+        dragStartRect = selectionRect
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard isEditable,
+              let activeHandle,
+              let dragStartPoint else { return }
+
+        let currentPoint = convert(event.locationInWindow, from: nil)
+        var updatedRect = dragStartRect
+        let deltaX = currentPoint.x - dragStartPoint.x
+        let deltaY = currentPoint.y - dragStartPoint.y
+
+        switch activeHandle {
+        case .topLeft:
+            updatedRect.origin.x += deltaX
+            updatedRect.size.width -= deltaX
+            updatedRect.size.height += deltaY
+        case .top:
+            updatedRect.size.height += deltaY
+        case .topRight:
+            updatedRect.size.width += deltaX
+            updatedRect.size.height += deltaY
+        case .right:
+            updatedRect.size.width += deltaX
+        case .bottomRight:
+            updatedRect.size.width += deltaX
+            updatedRect.origin.y += deltaY
+            updatedRect.size.height -= deltaY
+        case .bottom:
+            updatedRect.origin.y += deltaY
+            updatedRect.size.height -= deltaY
+        case .bottomLeft:
+            updatedRect.origin.x += deltaX
+            updatedRect.size.width -= deltaX
+            updatedRect.origin.y += deltaY
+            updatedRect.size.height -= deltaY
+        case .left:
+            updatedRect.origin.x += deltaX
+            updatedRect.size.width -= deltaX
+        }
+
+        let normalizedRect = normalized(rect: updatedRect)
+        selectionRect = normalizedRect
+        onSelectionChanged?(normalizedRect)
+        needsDisplay = true
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        activeHandle = nil
+        dragStartPoint = nil
+    }
+
+    private var handleRects: [DragHandle: CGRect] {
+        let half = Self.handleSize / 2
+        return [
+            .topLeft: CGRect(x: selectionRect.minX - half, y: selectionRect.maxY - half, width: Self.handleSize, height: Self.handleSize),
+            .top: CGRect(x: selectionRect.midX - half, y: selectionRect.maxY - half, width: Self.handleSize, height: Self.handleSize),
+            .topRight: CGRect(x: selectionRect.maxX - half, y: selectionRect.maxY - half, width: Self.handleSize, height: Self.handleSize),
+            .right: CGRect(x: selectionRect.maxX - half, y: selectionRect.midY - half, width: Self.handleSize, height: Self.handleSize),
+            .bottomRight: CGRect(x: selectionRect.maxX - half, y: selectionRect.minY - half, width: Self.handleSize, height: Self.handleSize),
+            .bottom: CGRect(x: selectionRect.midX - half, y: selectionRect.minY - half, width: Self.handleSize, height: Self.handleSize),
+            .bottomLeft: CGRect(x: selectionRect.minX - half, y: selectionRect.minY - half, width: Self.handleSize, height: Self.handleSize),
+            .left: CGRect(x: selectionRect.minX - half, y: selectionRect.midY - half, width: Self.handleSize, height: Self.handleSize)
+        ]
+    }
+
+    private func hitHandle(at point: CGPoint) -> DragHandle? {
+        handleRects.first(where: { $0.value.contains(point) })?.key
+    }
+
+    private func normalized(rect: CGRect) -> CGRect {
+        var rect = rect.standardized
+        rect.size.width = max(rect.width, Self.minimumSelectionSize)
+        rect.size.height = max(rect.height, Self.minimumSelectionSize)
+        if rect.maxX > bounds.maxX {
+            rect.origin.x = bounds.maxX - rect.width
+        }
+        if rect.maxY > bounds.maxY {
+            rect.origin.y = bounds.maxY - rect.height
+        }
+        rect.origin.x = max(bounds.minX, rect.origin.x)
+        rect.origin.y = max(bounds.minY, rect.origin.y)
+        return rect.integral
+    }
 }
 
 private final class RegionRecordingOverlayWindow: NSWindow {
     private let highlightView: RegionRecordingOverlayView
 
-    init(frame: CGRect, selectionRect: CGRect) {
+    init(frame: CGRect, selectionRect: CGRect, isEditable: Bool) {
         self.highlightView = RegionRecordingOverlayView(
             frame: CGRect(origin: .zero, size: frame.size),
             selectionRect: selectionRect
@@ -447,19 +575,26 @@ private final class RegionRecordingOverlayWindow: NSWindow {
         isOpaque = false
         backgroundColor = .clear
         hasShadow = false
-        ignoresMouseEvents = true
+        ignoresMouseEvents = !isEditable
         isReleasedWhenClosed = false
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         contentView = highlightView
+        highlightView.setEditable(isEditable)
     }
 
-    override var canBecomeKey: Bool { false }
+    override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 
-    func update(frame: CGRect, selectionRect: CGRect) {
+    func update(frame: CGRect, selectionRect: CGRect, isEditable: Bool) {
         setFrame(frame, display: true)
         highlightView.frame = CGRect(origin: .zero, size: frame.size)
         highlightView.update(selectionRect: selectionRect)
+        highlightView.setEditable(isEditable)
+        ignoresMouseEvents = !isEditable
+    }
+
+    func onSelectionChanged(_ handler: @escaping (CGRect) -> Void) {
+        highlightView.onSelectionChanged = handler
     }
 }
 
@@ -739,6 +874,9 @@ final class WindowManager: ObservableObject {
         dismissCountdownOverlay()
         if isCountdownActive {
             recordingState = .idle
+            if case .region(let selection) = recordingTarget {
+                showRegionRecordingOverlay(for: selection, editable: true)
+            }
         }
     }
 
@@ -772,11 +910,11 @@ final class WindowManager: ObservableObject {
             self?.isSelectingRecordingRegion = false
             self?.recordingTarget = .region(selection)
             self?.selectedWindowDisplayName = nil
-            self?.showRegionRecordingOverlay(for: selection)
+            self?.showRegionRecordingOverlay(for: selection, editable: true)
         } onCancel: { [weak self] in
             self?.isSelectingRecordingRegion = false
             if case .region(let selection) = self?.recordingTarget {
-                self?.showRegionRecordingOverlay(for: selection)
+                self?.showRegionRecordingOverlay(for: selection, editable: true)
             }
         }
     }
@@ -819,6 +957,9 @@ final class WindowManager: ObservableObject {
     @available(macOS 15.0, *)
     private func beginRecordingCountdown(target: ResolvedRecordingTarget) {
         countdownTask?.cancel()
+        if case .region(let selection) = target {
+            showRegionRecordingOverlay(for: selection, editable: false)
+        }
         showCountdownOverlay(seconds: Self.recordingCountdownSeconds, target: target)
         recordingState = .countdown(secondsRemaining: Self.recordingCountdownSeconds)
 
@@ -929,19 +1070,25 @@ final class WindowManager: ObservableObject {
         countdownOverlayWindow = nil
     }
 
-    private func showRegionRecordingOverlay(for selection: RecordingRegionSelection) {
+    private func showRegionRecordingOverlay(for selection: RecordingRegionSelection, editable: Bool) {
         guard let displayFrame = NSScreen.screens.first(where: { $0.displayID == selection.displayID })?.frame else {
             return
         }
         let localRect = selection.rect.offsetBy(dx: -displayFrame.minX, dy: -displayFrame.minY)
 
         if let window = regionRecordingOverlayWindow {
-            window.update(frame: displayFrame, selectionRect: localRect)
+            window.update(frame: displayFrame, selectionRect: localRect, isEditable: editable)
             window.orderFrontRegardless()
             return
         }
 
-        let window = RegionRecordingOverlayWindow(frame: displayFrame, selectionRect: localRect)
+        let window = RegionRecordingOverlayWindow(frame: displayFrame, selectionRect: localRect, isEditable: editable)
+        window.onSelectionChanged { [weak self] localRect in
+            guard let self else { return }
+            let globalRect = localRect.offsetBy(dx: displayFrame.minX, dy: displayFrame.minY)
+            let selection = RecordingRegionSelection(displayID: selection.displayID, rect: globalRect.integral)
+            self.recordingTarget = .region(selection)
+        }
         regionRecordingOverlayWindow = window
         window.orderFrontRegardless()
     }
