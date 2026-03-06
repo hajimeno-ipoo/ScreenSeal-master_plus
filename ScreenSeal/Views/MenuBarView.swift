@@ -10,7 +10,7 @@ struct MenuBarView: View {
         }
         .keyboardShortcut("n")
 
-        recordingSection
+        captureSection
 
         Divider()
 
@@ -82,10 +82,10 @@ struct MenuBarView: View {
             }
         }
 
-        if let status = windowManager.recordingState.statusText {
+        if let status = windowManager.statusText {
             Divider()
             Text(status)
-                .foregroundColor(windowManager.recordingState.isFailure ? .red : .secondary)
+                .foregroundColor(windowManager.isStatusFailure ? .red : .secondary)
                 .font(.caption)
         }
 
@@ -103,35 +103,58 @@ struct MenuBarView: View {
     }
 
     @ViewBuilder
-    private var recordingSection: some View {
-        if windowManager.isCountdownActive {
-            Button("Cancel Countdown") {
-                windowManager.cancelRecordingCountdown()
+    private var captureSection: some View {
+        if windowManager.captureMode == .record {
+            if windowManager.isCountdownActive {
+                Button("Cancel Countdown") {
+                    windowManager.performPrimaryCaptureAction()
+                }
+                .keyboardShortcut("r")
+            } else if windowManager.canStopRecording {
+                Button("Stop Recording") {
+                    windowManager.performPrimaryCaptureAction()
+                }
+                .keyboardShortcut("r")
+            } else {
+                Button("Start Recording") {
+                    windowManager.performPrimaryCaptureAction()
+                }
+                .keyboardShortcut("r")
             }
-            .keyboardShortcut("r")
-        } else if windowManager.canStopRecording {
-            Button("Stop Recording") {
-                windowManager.stopRecording()
-            }
-            .keyboardShortcut("r")
         } else {
-            Button("Start Recording") {
-                windowManager.startRecording()
+            Button("Take Screenshot") {
+                windowManager.performPrimaryCaptureAction()
             }
             .keyboardShortcut("r")
+            .disabled(windowManager.isTakingScreenshot)
         }
 
-        Menu("Recording Target") {
+        Menu("Capture Mode") {
+            Button {
+                windowManager.captureMode = .record
+            } label: {
+                selectionMenuLabel("Record", selected: windowManager.captureMode == .record)
+            }
+
+            Button {
+                windowManager.captureMode = .screenshot
+            } label: {
+                selectionMenuLabel("Screenshot", selected: windowManager.captureMode == .screenshot)
+            }
+        }
+        .disabled(windowManager.isCaptureModeSelectionDisabled)
+
+        Menu("Capture Target") {
             Button {
                 windowManager.selectDisplayRecordingTarget()
             } label: {
-                recordingTargetMenuLabel("Full Display", selected: windowManager.recordingTarget == .display)
+                selectionMenuLabel("Full Display", selected: windowManager.recordingTarget == .display)
             }
 
             Button("Choose Window...") {
                 windowManager.beginSystemWindowSelection()
             }
-            .disabled(windowManager.isRecordingPreparationActive || windowManager.followCursorRecording)
+            .disabled(windowManager.isCaptureModeSelectionDisabled || windowManager.shouldDisableNonDisplayTargets)
 
             if case .window = windowManager.recordingTarget,
                let selectedWindowDisplayName = windowManager.selectedWindowDisplayName {
@@ -143,30 +166,30 @@ struct MenuBarView: View {
             Button {
                 windowManager.beginRecordingRegionSelection()
             } label: {
-                recordingTargetMenuLabel("Select Region...", selected: windowManager.isRegionRecordingTarget)
+                selectionMenuLabel("Select Region...", selected: windowManager.isRegionRecordingTarget)
             }
-            .disabled(windowManager.isRecordingPreparationActive || windowManager.followCursorRecording)
+            .disabled(windowManager.isCaptureModeSelectionDisabled || windowManager.shouldDisableNonDisplayTargets)
         }
-        .disabled(windowManager.isRecordingPreparationActive)
+        .disabled(windowManager.isCaptureModeSelectionDisabled)
 
         Toggle("Follow Cursor", isOn: $windowManager.followCursorRecording)
-            .disabled(windowManager.isRecordingPreparationActive)
+            .disabled(windowManager.recordingOptionsDisabled)
         Toggle("Cursor Highlight", isOn: $windowManager.cursorHighlightEnabled)
-            .disabled(windowManager.isRecordingPreparationActive)
+            .disabled(windowManager.recordingOptionsDisabled)
         Toggle("Click Ring", isOn: $windowManager.clickRingEnabled)
-            .disabled(windowManager.isRecordingPreparationActive)
+            .disabled(windowManager.recordingOptionsDisabled)
         Button("Cursor Highlight Color...") {
             windowManager.openCursorHighlightColorPanel()
         }
-        .disabled(windowManager.isRecordingPreparationActive)
+        .disabled(windowManager.recordingOptionsDisabled)
         Button("Click Ring Color...") {
             windowManager.openClickRingColorPanel()
         }
-        .disabled(windowManager.isRecordingPreparationActive)
+        .disabled(windowManager.recordingOptionsDisabled)
         Button("Reset Cursor Colors") {
             windowManager.resetRecordingCursorColors()
         }
-        .disabled(windowManager.isRecordingPreparationActive)
+        .disabled(windowManager.recordingOptionsDisabled)
     }
 
     private func promptSavePreset() {
@@ -207,7 +230,7 @@ struct MenuBarView: View {
     }
 
     @ViewBuilder
-    private func recordingTargetMenuLabel(_ title: String, selected: Bool) -> some View {
+    private func selectionMenuLabel(_ title: String, selected: Bool) -> some View {
         HStack {
             Image(systemName: selected ? "checkmark" : "")
                 .frame(width: 12)

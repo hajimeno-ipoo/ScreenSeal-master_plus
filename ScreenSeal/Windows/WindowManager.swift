@@ -89,6 +89,11 @@ enum RecordingTarget: Equatable {
     case region(RecordingRegionSelection)
 }
 
+enum CaptureMode: String, Equatable {
+    case record = "Record"
+    case screenshot = "Screenshot"
+}
+
 struct RecordingWindowOption: Identifiable, Equatable {
     let windowID: CGWindowID
     let appName: String
@@ -693,7 +698,15 @@ final class WindowManager: ObservableObject {
 
     @Published private(set) var windows: [OverlayWindow] = []
     @Published var captureError: String?
+    @Published var captureMode: CaptureMode = .record {
+        didSet {
+            clearStatusForModeChange()
+        }
+    }
     @Published var recordingState: RecordingState = .idle
+    @Published private(set) var screenshotStatusMessage: String?
+    @Published private(set) var screenshotStatusIsFailure = false
+    @Published private(set) var isTakingScreenshot = false
     @Published var recordingTarget: RecordingTarget = .display
     @Published private(set) var selectedWindowDisplayName: String?
     @Published var followCursorRecording = false {
@@ -742,6 +755,36 @@ final class WindowManager: ObservableObject {
     var isCountdownActive: Bool {
         if case .countdown = recordingState { return true }
         return false
+    }
+
+    var isCaptureModeSelectionDisabled: Bool {
+        isRecordingPreparationActive || isTakingScreenshot
+    }
+
+    var recordingOptionsDisabled: Bool {
+        isRecordingPreparationActive || isTakingScreenshot || captureMode == .screenshot
+    }
+
+    var shouldDisableNonDisplayTargets: Bool {
+        captureMode == .record && followCursorRecording
+    }
+
+    var statusText: String? {
+        switch captureMode {
+        case .record:
+            return recordingState.statusText ?? screenshotStatusMessage
+        case .screenshot:
+            return screenshotStatusMessage ?? recordingState.statusText
+        }
+    }
+
+    var isStatusFailure: Bool {
+        switch captureMode {
+        case .record:
+            return recordingState.statusText != nil ? recordingState.isFailure : screenshotStatusIsFailure
+        case .screenshot:
+            return screenshotStatusMessage != nil ? screenshotStatusIsFailure : recordingState.isFailure
+        }
     }
 
     var isRecordingPreparationActive: Bool {
@@ -822,8 +865,24 @@ final class WindowManager: ObservableObject {
 
     // MARK: - Recording
 
+    func performPrimaryCaptureAction() {
+        switch captureMode {
+        case .record:
+            if isCountdownActive {
+                cancelRecordingCountdown()
+            } else if canStopRecording {
+                stopRecording()
+            } else {
+                startRecording()
+            }
+        case .screenshot:
+            takeScreenshot()
+        }
+    }
+
     func startRecording() {
         if isRecordingPreparationActive { return }
+        clearScreenshotStatus()
 
         guard #available(macOS 15.0, *) else {
             recordingState = .failed(message: "録画機能は macOS 15.0 以降で利用できます")
@@ -840,6 +899,47 @@ final class WindowManager: ObservableObject {
             } catch {
                 await MainActor.run {
                     self.recordingState = .failed(message: error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    func takeScreenshot() {
+        if isRecordingPreparationActive || isTakingScreenshot { return }
+
+        clearScreenshotStatus()
+        isTakingScreenshot = true
+        screenshotStatusMessage = "Screenshot: saving..."
+
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let target = try await self.resolveRecordingTarget()
+                let service = ScreenshotService()
+                let shareableContent = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
+                let filterContext = await MainActor.run {
+                    (
+                        excludedApplications: self.excludedCurrentApplications(from: shareableContent),
+                        exceptingWindows: self.overlayShareableWindows(from: shareableContent),
+                        overlayWindowIDs: self.windows.map { CGWindowID($0.windowNumber) }
+                    )
+                }
+                let outputURL = try await service.capture(
+                    target: target,
+                    excludedApplications: filterContext.excludedApplications,
+                    exceptingWindows: filterContext.exceptingWindows,
+                    overlayWindowIDs: filterContext.overlayWindowIDs
+                )
+                await MainActor.run {
+                    self.isTakingScreenshot = false
+                    self.screenshotStatusIsFailure = false
+                    self.screenshotStatusMessage = "Screenshot saved: \(outputURL.lastPathComponent)"
+                }
+            } catch {
+                await MainActor.run {
+                    self.isTakingScreenshot = false
+                    self.screenshotStatusIsFailure = true
+                    self.screenshotStatusMessage = error.localizedDescription
                 }
             }
         }
@@ -907,7 +1007,7 @@ final class WindowManager: ObservableObject {
     }
 
     func beginSystemWindowSelection() {
-        guard !isRecordingPreparationActive, !followCursorRecording else { return }
+        guard !isRecordingPreparationActive, !isTakingScreenshot, !shouldDisableNonDisplayTargets else { return }
         setOverlayWindowsInteractive(false)
         let excludedWindowIDs = windows.map { Int($0.windowNumber) }
         windowSelectionPickerCoordinator.presentPicker(
@@ -923,7 +1023,7 @@ final class WindowManager: ObservableObject {
     }
 
     func beginRecordingRegionSelection() {
-        guard !isRecordingPreparationActive, !followCursorRecording else { return }
+        guard !isRecordingPreparationActive, !isTakingScreenshot, !shouldDisableNonDisplayTargets else { return }
 
         isSelectingRecordingRegion = true
         dismissRegionRecordingOverlay()
@@ -1041,8 +1141,8 @@ final class WindowManager: ObservableObject {
                 let shareableContent = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
                 let recordingFilterContext = await MainActor.run {
                     (
-                        excludedApplications: self.excludedRecordingApplications(from: shareableContent),
-                        exceptingWindows: self.exceptedRecordingWindows(from: shareableContent),
+                        excludedApplications: self.excludedCurrentApplications(from: shareableContent),
+                        exceptingWindows: self.overlayShareableWindows(from: shareableContent),
                         overlayWindowIDs: self.windows.map { CGWindowID($0.windowNumber) }
                     )
                 }
@@ -1123,16 +1223,29 @@ final class WindowManager: ObservableObject {
         regionRecordingOverlayWindow = nil
     }
 
-    @available(macOS 15.0, *)
-    private func excludedRecordingApplications(from content: SCShareableContent) -> [SCRunningApplication] {
+    private func excludedCurrentApplications(from content: SCShareableContent) -> [SCRunningApplication] {
         let selfBundleID = Bundle.main.bundleIdentifier ?? ""
         return content.applications.filter { $0.bundleIdentifier == selfBundleID }
     }
 
-    @available(macOS 15.0, *)
-    private func exceptedRecordingWindows(from content: SCShareableContent) -> [SCWindow] {
+    private func overlayShareableWindows(from content: SCShareableContent) -> [SCWindow] {
         let overlayWindowIDs = Set(windows.map { CGWindowID($0.windowNumber) })
         return content.windows.filter { overlayWindowIDs.contains($0.windowID) }
+    }
+
+    private func clearStatusForModeChange() {
+        clearScreenshotStatus()
+        if captureMode == .record, followCursorRecording, recordingTarget != .display {
+            selectDisplayRecordingTarget()
+        }
+        if case .failed = recordingState {
+            recordingState = .idle
+        }
+    }
+
+    private func clearScreenshotStatus() {
+        screenshotStatusMessage = nil
+        screenshotStatusIsFailure = false
     }
 
     private static func saveColor(_ color: CGColor, forKey key: String) {
@@ -1161,7 +1274,6 @@ final class WindowManager: ObservableObject {
         }
     }
 
-    @available(macOS 15.0, *)
     private func resolveRecordingTarget() async throws -> ResolvedRecordingTarget {
         switch recordingTarget {
         case .display:

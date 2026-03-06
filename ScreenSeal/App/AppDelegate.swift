@@ -5,11 +5,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let windowManager = WindowManager()
     private let permissionManager = PermissionManager()
     private var recordingControlItem: NSStatusItem?
-    private var recordingStateCancellable: AnyCancellable?
+    private var windowManagerCancellable: AnyCancellable?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         configureRecordingControlItem()
-        recordingStateCancellable = windowManager.$recordingState
+        windowManagerCancellable = windowManager.objectWillChange
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.updateRecordingControlItem()
@@ -42,13 +42,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let button = recordingControlItem?.button else { return }
 
         let configuration: (symbol: String, description: String, color: NSColor?)
-        switch windowManager.recordingState {
-        case .idle, .failed:
-            configuration = ("record.circle", "Start Recording", nil)
-        case .countdown:
-            configuration = ("xmark.circle", "Cancel Countdown", .systemOrange)
-        case .starting, .recording, .stopping:
-            configuration = ("stop.circle.fill", "Stop Recording", .systemRed)
+        switch windowManager.captureMode {
+        case .record:
+            switch windowManager.recordingState {
+            case .idle, .failed:
+                configuration = ("record.circle", "Start Recording", nil)
+            case .countdown:
+                configuration = ("xmark.circle", "Cancel Countdown", .systemOrange)
+            case .starting, .recording, .stopping:
+                configuration = ("stop.circle.fill", "Stop Recording", .systemRed)
+            }
+        case .screenshot:
+            configuration = ("camera.circle", "Take Screenshot", nil)
         }
 
         button.image = NSImage(systemSymbolName: configuration.symbol, accessibilityDescription: configuration.description)
@@ -58,13 +63,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc
     private func handleRecordingControlClick(_ sender: Any?) {
-        switch windowManager.recordingState {
-        case .countdown:
-            windowManager.cancelRecordingCountdown()
-        case .starting, .recording, .stopping:
-            windowManager.stopRecording()
-        case .idle, .failed:
-            windowManager.startRecording()
-        }
+        windowManager.performPrimaryCaptureAction()
     }
 }
