@@ -20,6 +20,8 @@ Place ScreenSeal's mosaic windows over passwords, personal data, or other sensit
 - **Persistent Settings** - Mosaic type and intensity are preserved across app restarts
 - **Still Screenshot Capture** - Save a single PNG with mosaics applied from the menu bar
 - **Screen Recording** - Record a single display to MP4 from the menu bar
+- **Save Preview Overlay** - Show a thumbnail on screen after saving a screenshot or recording
+- **Open Action Selection** - Choose Finder / Preview for screenshots, Finder / QuickTime for recordings
 - **Recording Countdown** - Shows a 3-second countdown before recording starts
 - **Recording Target Modes** - Capture a full display, a selected window, or a selected region
 - **Click Zoom** - While the primary mouse button is pressed, zooms toward the cursor (1.8x with smooth easing)
@@ -47,9 +49,12 @@ Download the latest `ScreenSeal.zip` from the [Releases](https://github.com/nyan
 8. Choose **Capture Target**: **Full Display**, **Window**, or **Select Region...**
 9. In **Record** mode, click **Start Recording** to save MP4 to `~/Movies/ScreenSeal/`
 10. In **Screenshot** mode, click the side menu bar button or **Take Screenshot** to save PNG to `~/Pictures/ScreenSeal/`
-11. A 3-second countdown appears before recording starts
-12. Hold primary click while recording to trigger click-zoom
-13. Set **Cursor Highlight Color** and **Click Ring Color** before recording to customize the overlay look
+11. Pick **Screenshot Click Action**: **Finder** or **Preview**
+12. Pick **Recording Click Action**: **Finder** or **QuickTime**
+13. After saving, a thumbnail preview appears on screen; click it to open the saved file with the selected app
+14. A 3-second countdown appears before recording starts
+15. Hold primary click while recording to trigger click-zoom
+16. Set **Cursor Highlight Color** and **Click Ring Color** before recording to customize the overlay look
 
 ## Build
 

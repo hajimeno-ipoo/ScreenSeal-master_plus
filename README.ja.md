@@ -18,6 +18,8 @@
 - **設定の永続化** - モザイクタイプと強度はアプリ終了後も保持
 - **静止画スクリーンショット** - メニューバーからモザイク入りPNGを1枚保存
 - **画面録画** - メニューバーから単一ディスプレイを MP4 録画
+- **保存後サムネイル確認** - スクショや録画の保存後に、画面上へサムネイルを一時表示
+- **開き先の選択** - スクショは Finder / Preview、録画は Finder / QuickTime を選択可能
 - **クリックズーム** - 左クリック中はカーソル中心へ滑らかに拡大（1.8x）
 
 ## Requirements
@@ -42,7 +44,10 @@
 8. **Capture Target** で **Full Display** / **Window** / **Select Region...** を選びます
 9. **Record** モードでは **Start Recording** で `~/Movies/ScreenSeal/` に MP4 保存
 10. **Screenshot** モードでは右隣のボタン、または **Take Screenshot** で `~/Pictures/ScreenSeal/` に PNG 保存
-11. 録画中に左クリックを押すとクリックズームが有効化
+11. **Screenshot Click Action** でスクショの開き先を **Finder** / **Preview** から選びます
+12. **Recording Click Action** で録画の開き先を **Finder** / **QuickTime** から選びます
+13. 保存後は画面上にサムネイルが出て、クリックすると選んだアプリで開きます
+14. 録画中に左クリックを押すとクリックズームが有効化
 
 ## Build
 
