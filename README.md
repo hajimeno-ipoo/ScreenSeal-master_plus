@@ -1,6 +1,6 @@
 <img src="ScreenSeal/Resources/Assets.xcassets/icon.appiconset/icon_256x256.png" width="128" alt="ScreenSeal Icon">
 
-# ScreenSeal
+# ScreenSeal_plus
 
 A macOS menu bar app for hiding sensitive information on screen with mosaic overlays.
 

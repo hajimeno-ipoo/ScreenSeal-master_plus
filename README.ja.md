@@ -1,6 +1,6 @@
 <img src="ScreenSeal/Resources/Assets.xcassets/icon.appiconset/icon_256x256.png" width="128" alt="ScreenSeal Icon">
 
-# ScreenSeal
+# ScreenSeal_plus
 
 画面上の機密情報をモザイクで隠すための macOS メニューバーアプリ。
 
