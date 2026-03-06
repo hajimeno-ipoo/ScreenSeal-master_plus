@@ -13,6 +13,7 @@
 
 影響範囲:
 - メニューバーUI、常駐ボタン、対象選択の無効条件、ScreenCaptureKit を使う静止画保存。
+- 録画停止後の確認表示、AVFoundation を使う MP4 サムネイル生成、Finder/QuickTime 起動。
 
 検証結果:
 - xcodebuild -project ScreenSeal.xcodeproj -scheme ScreenSeal -configuration Release -derivedDataPath /tmp/ScreenSeal-screenshot-build build

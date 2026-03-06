@@ -187,6 +187,21 @@ struct MenuBarView: View {
         }
         .disabled(windowManager.isTakingScreenshot)
 
+        Menu("Recording Click Action") {
+            Button {
+                windowManager.recordingOpenAction = .quickTime
+            } label: {
+                selectionMenuLabel("QuickTime", selected: windowManager.recordingOpenAction == .quickTime)
+            }
+
+            Button {
+                windowManager.recordingOpenAction = .finder
+            } label: {
+                selectionMenuLabel("Finder", selected: windowManager.recordingOpenAction == .finder)
+            }
+        }
+        .disabled(windowManager.isRecordingPreparationActive)
+
         Toggle("Follow Cursor", isOn: $windowManager.followCursorRecording)
             .disabled(windowManager.recordingOptionsDisabled)
         Toggle("Cursor Highlight", isOn: $windowManager.cursorHighlightEnabled)

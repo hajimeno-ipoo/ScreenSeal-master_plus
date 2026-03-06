@@ -1,4 +1,5 @@
 import AppKit
+@preconcurrency import AVFoundation
 import Combine
 import CoreImage
 import ScreenCaptureKit
@@ -99,6 +100,11 @@ enum ScreenshotOpenAction: String, CaseIterable, Equatable {
     case finder = "Finder"
 }
 
+enum RecordingOpenAction: String, CaseIterable, Equatable {
+    case quickTime = "QuickTime"
+    case finder = "Finder"
+}
+
 struct RecordingWindowOption: Identifiable, Equatable {
     let windowID: CGWindowID
     let appName: String
@@ -152,14 +158,15 @@ private enum RecordingTargetResolutionError: LocalizedError {
 }
 
 private final class ScreenshotPreviewView: NSView {
-    private let titleLabel = NSTextField(labelWithString: "Screenshot Saved")
+    private let titleLabel: NSTextField
     private let subtitleLabel: NSTextField
     private let imageContainerView = NSView()
     private let imageLayer = CALayer()
     var onClick: (() -> Void)?
 
-    init(image: CGImage, openAction: ScreenshotOpenAction) {
-        self.subtitleLabel = NSTextField(labelWithString: "Click to open in \(openAction.rawValue)")
+    init(image: CGImage, title: String, subtitle: String) {
+        self.titleLabel = NSTextField(labelWithString: title)
+        self.subtitleLabel = NSTextField(labelWithString: subtitle)
         super.init(frame: NSRect(x: 0, y: 0, width: 200, height: 150))
         wantsLayer = true
         layer?.backgroundColor = NSColor.black.withAlphaComponent(0.84).cgColor
@@ -229,8 +236,8 @@ private final class ScreenshotPreviewView: NSView {
 private final class ScreenshotPreviewWindow: NSWindow {
     private let previewView: ScreenshotPreviewView
 
-    init(image: CGImage, openAction: ScreenshotOpenAction, frame: NSRect) {
-        self.previewView = ScreenshotPreviewView(image: image, openAction: openAction)
+    init(image: CGImage, title: String, subtitle: String, frame: NSRect) {
+        self.previewView = ScreenshotPreviewView(image: image, title: title, subtitle: subtitle)
         super.init(
             contentRect: frame,
             styleMask: [.borderless],
@@ -804,6 +811,7 @@ final class WindowManager: ObservableObject {
     private static let cursorHighlightColorKey = "ScreenSeal.cursorHighlightColor"
     private static let clickRingColorKey = "ScreenSeal.clickRingColor"
     private static let screenshotOpenActionKey = "ScreenSeal.screenshotOpenAction"
+    private static let recordingOpenActionKey = "ScreenSeal.recordingOpenAction"
     private static let screenshotPreviewDurationNanoseconds: UInt64 = 10_000_000_000
     private static let defaultCursorHighlightColor = CGColor(
         red: 0.10,
@@ -831,6 +839,9 @@ final class WindowManager: ObservableObject {
     @Published private(set) var isTakingScreenshot = false
     @Published var screenshotOpenAction: ScreenshotOpenAction {
         didSet { UserDefaults.standard.set(screenshotOpenAction.rawValue, forKey: Self.screenshotOpenActionKey) }
+    }
+    @Published var recordingOpenAction: RecordingOpenAction {
+        didSet { UserDefaults.standard.set(recordingOpenAction.rawValue, forKey: Self.recordingOpenActionKey) }
     }
     @Published var recordingTarget: RecordingTarget = .display
     @Published private(set) var selectedWindowDisplayName: String?
@@ -866,6 +877,7 @@ final class WindowManager: ObservableObject {
     private var regionRecordingOverlayWindow: RegionRecordingOverlayWindow?
     private var screenshotPreviewDismissTask: Task<Void, Never>?
     private var screenshotPreviewWindow: ScreenshotPreviewWindow?
+    private var lastResolvedRecordingTarget: ResolvedRecordingTarget?
 
     private var recordingServiceRef: AnyObject?
 
@@ -927,6 +939,9 @@ final class WindowManager: ObservableObject {
         self.screenshotOpenAction = ScreenshotOpenAction(
             rawValue: UserDefaults.standard.string(forKey: Self.screenshotOpenActionKey) ?? ""
         ) ?? .preview
+        self.recordingOpenAction = RecordingOpenAction(
+            rawValue: UserDefaults.standard.string(forKey: Self.recordingOpenActionKey) ?? ""
+        ) ?? .quickTime
         self.cursorHighlightColor = Self.loadColor(
             forKey: Self.cursorHighlightColorKey,
             fallback: Self.defaultCursorHighlightColor
@@ -1026,6 +1041,7 @@ final class WindowManager: ObservableObject {
             do {
                 let target = try await self.resolveRecordingTarget()
                 await MainActor.run {
+                    self.lastResolvedRecordingTarget = target
                     self.beginRecordingCountdown(target: target)
                 }
             } catch {
@@ -1066,7 +1082,14 @@ final class WindowManager: ObservableObject {
                     self.isTakingScreenshot = false
                     self.screenshotStatusIsFailure = false
                     self.screenshotStatusMessage = "Screenshot saved: \(result.outputURL.lastPathComponent)"
-                    self.showScreenshotPreview(image: result.image, outputURL: result.outputURL, target: target)
+                    self.showCapturePreview(
+                        image: result.image,
+                        outputURL: result.outputURL,
+                        target: target,
+                        title: "Screenshot Saved",
+                        subtitle: "Click to open in \(self.screenshotOpenAction.rawValue)",
+                        opener: self.openScreenshot
+                    )
                     if case .region = self.recordingTarget {
                         self.selectDisplayRecordingTarget()
                     }
@@ -1091,7 +1114,8 @@ final class WindowManager: ObservableObject {
 
         Task {
             do {
-                _ = try await service.stop()
+                let outputURL = try await service.stop()
+                let previewImage = try? await self.recordingPreviewImage(for: outputURL)
                 await MainActor.run {
                     SCContentSharingPicker.shared.isActive = false
                     self.recordingServiceRef = nil
@@ -1099,10 +1123,23 @@ final class WindowManager: ObservableObject {
                     self.recordingTarget = .display
                     self.dismissRegionRecordingOverlay()
                     self.removeAllWindows()
+                    if let previewImage,
+                       let target = self.lastResolvedRecordingTarget {
+                        self.showCapturePreview(
+                            image: previewImage,
+                            outputURL: outputURL,
+                            target: target,
+                            title: "Recording Saved",
+                            subtitle: "Click to open in \(self.recordingOpenAction.rawValue)",
+                            opener: self.openRecording
+                        )
+                    }
+                    self.lastResolvedRecordingTarget = nil
                 }
             } catch {
                 do {
-                    _ = try await service.stop()
+                    let outputURL = try await service.stop()
+                    let previewImage = try? await self.recordingPreviewImage(for: outputURL)
                     await MainActor.run {
                         SCContentSharingPicker.shared.isActive = false
                         self.recordingServiceRef = nil
@@ -1110,6 +1147,18 @@ final class WindowManager: ObservableObject {
                         self.recordingTarget = .display
                         self.dismissRegionRecordingOverlay()
                         self.removeAllWindows()
+                        if let previewImage,
+                           let target = self.lastResolvedRecordingTarget {
+                            self.showCapturePreview(
+                                image: previewImage,
+                                outputURL: outputURL,
+                                target: target,
+                                title: "Recording Saved",
+                                subtitle: "Click to open in \(self.recordingOpenAction.rawValue)",
+                                opener: self.openRecording
+                            )
+                        }
+                        self.lastResolvedRecordingTarget = nil
                     }
                 } catch {
                     await MainActor.run {
@@ -1118,6 +1167,7 @@ final class WindowManager: ObservableObject {
                         self.recordingState = .failed(message: "録画停止に失敗しました")
                         self.recordingTarget = .display
                         self.dismissRegionRecordingOverlay()
+                        self.lastResolvedRecordingTarget = nil
                     }
                 }
             }
@@ -1384,7 +1434,14 @@ final class WindowManager: ObservableObject {
         screenshotStatusIsFailure = false
     }
 
-    private func showScreenshotPreview(image: CGImage, outputURL: URL, target: ResolvedRecordingTarget) {
+    private func showCapturePreview(
+        image: CGImage,
+        outputURL: URL,
+        target: ResolvedRecordingTarget,
+        title: String,
+        subtitle: String,
+        opener: @escaping (URL) -> Void
+    ) {
         guard let screenFrame = previewScreenFrame(for: target) else {
             return
         }
@@ -1393,11 +1450,12 @@ final class WindowManager: ObservableObject {
 
         let window = ScreenshotPreviewWindow(
             image: image,
-            openAction: screenshotOpenAction,
+            title: title,
+            subtitle: subtitle,
             frame: ScreenshotPreviewWindow.frame(on: screenFrame)
         )
         window.onClick { [weak self] in
-            self?.openScreenshot(at: outputURL)
+            opener(outputURL)
             self?.dismissScreenshotPreview()
         }
         screenshotPreviewWindow = window
@@ -1414,6 +1472,27 @@ final class WindowManager: ObservableObject {
                 self.dismissScreenshotPreview()
             }
         }
+    }
+
+    @available(macOS 15.0, *)
+    private func recordingPreviewImage(for url: URL) async throws -> CGImage {
+        let asset = AVURLAsset(url: url)
+        let duration = try await asset.load(.duration)
+        let durationSeconds = CMTimeGetSeconds(duration)
+        let captureSeconds: Double
+        if durationSeconds.isFinite, durationSeconds > 0 {
+            captureSeconds = min(max(durationSeconds * 0.5, 0), max(durationSeconds - 0.1, 0))
+        } else {
+            captureSeconds = 0
+        }
+
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 640, height: 360)
+        return try generator.copyCGImage(
+            at: CMTime(seconds: captureSeconds, preferredTimescale: 600),
+            actualTime: nil
+        )
     }
 
     private func dismissScreenshotPreview() {
@@ -1449,6 +1528,25 @@ final class WindowManager: ObservableObject {
             ) { _, error in
                 if let error {
                     logger.error("Failed to open screenshot in Preview: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    private func openRecording(at url: URL) {
+        switch recordingOpenAction {
+        case .finder:
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        case .quickTime:
+            let configuration = NSWorkspace.OpenConfiguration()
+            let quickTimeURL = URL(fileURLWithPath: "/System/Applications/QuickTime Player.app")
+            NSWorkspace.shared.open(
+                [url],
+                withApplicationAt: quickTimeURL,
+                configuration: configuration
+            ) { _, error in
+                if let error {
+                    logger.error("Failed to open recording in QuickTime: \(error.localizedDescription)")
                 }
             }
         }
