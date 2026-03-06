@@ -121,6 +121,45 @@ struct MenuBarView: View {
             .keyboardShortcut("r")
         }
 
+        Menu("Recording Target") {
+            Button {
+                windowManager.selectDisplayRecordingTarget()
+            } label: {
+                recordingTargetMenuLabel("Full Display", selected: windowManager.recordingTarget == .display)
+            }
+
+            Menu("Window") {
+                Button("Refresh Window List") {
+                    Task {
+                        await windowManager.refreshRecordingWindowOptions()
+                    }
+                }
+
+                if windowManager.recordingWindowOptions.isEmpty {
+                    Button("No windows available") { }
+                        .disabled(true)
+                } else {
+                    ForEach(windowManager.recordingWindowOptions) { option in
+                        Button {
+                            windowManager.selectWindowRecordingTarget(option)
+                        } label: {
+                            recordingTargetMenuLabel(
+                                option.menuTitle,
+                                selected: windowManager.isWindowRecordingTarget(option.windowID)
+                            )
+                        }
+                    }
+                }
+            }
+
+            Button {
+                windowManager.beginRecordingRegionSelection()
+            } label: {
+                recordingTargetMenuLabel("Select Region...", selected: windowManager.isRegionRecordingTarget)
+            }
+        }
+        .disabled(windowManager.isRecordingPreparationActive)
+
         Toggle("Follow Cursor", isOn: $windowManager.followCursorRecording)
             .disabled(windowManager.isRecordingPreparationActive)
         Toggle("Cursor Highlight", isOn: $windowManager.cursorHighlightEnabled)
@@ -176,5 +215,14 @@ struct MenuBarView: View {
             return
         }
         NSWorkspace.shared.open(url)
+    }
+
+    @ViewBuilder
+    private func recordingTargetMenuLabel(_ title: String, selected: Bool) -> some View {
+        HStack {
+            Image(systemName: selected ? "checkmark" : "")
+                .frame(width: 12)
+            Text(title)
+        }
     }
 }

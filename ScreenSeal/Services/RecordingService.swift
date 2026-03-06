@@ -84,7 +84,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         )
     }
 
-    func start(displayID: CGDirectDisplayID) async throws -> URL {
+    func start(target: ResolvedRecordingTarget, excludedWindows: [SCWindow] = []) async throws -> URL {
         guard case .idle = state else {
             throw RecordingError.invalidState
         }
@@ -93,21 +93,8 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
 
         do {
             let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
-            guard let display = content.displays.first(where: { $0.displayID == displayID })
-                ?? content.displays.first else {
-                throw RecordingError.displayNotFound
-            }
-
-            let scaleFactor: CGFloat = await MainActor.run {
-                NSScreen.screens.first(where: { $0.displayID == display.displayID })?.backingScaleFactor ?? 2.0
-            }
-            let screenFrame: CGRect = await MainActor.run {
-                NSScreen.screens.first(where: { $0.displayID == display.displayID })?.frame ?? .zero
-            }
 
             let config = SCStreamConfiguration()
-            config.width = Int(CGFloat(display.width) * scaleFactor)
-            config.height = Int(CGFloat(display.height) * scaleFactor)
             config.pixelFormat = kCVPixelFormatType_32BGRA
             config.minimumFrameInterval = CMTime(value: 1, timescale: Int32(max(1, zoomProfile.fps)))
             config.queueDepth = 5
@@ -118,17 +105,81 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             config.sampleRate = 48_000
             config.channelCount = 2
 
+            let filter: SCContentFilter
+            let captureFrame: CGRect
+
+            switch target {
+            case .display(let displayID, let frame):
+                guard let display = content.displays.first(where: { $0.displayID == displayID })
+                    ?? content.displays.first else {
+                    throw RecordingError.displayNotFound
+                }
+
+                let scaleFactor = await MainActor.run {
+                    Self.screen(forDisplayID: display.displayID)?.backingScaleFactor ?? 2.0
+                }
+                config.width = Int(CGFloat(display.width) * scaleFactor)
+                config.height = Int(CGFloat(display.height) * scaleFactor)
+                filter = SCContentFilter(display: display, excludingApplications: [], exceptingWindows: excludedWindows)
+                captureFrame = frame
+
+            case .window(let windowID, let windowFrame, _):
+                guard let window = content.windows.first(where: { $0.windowID == windowID }) else {
+                    throw RecordingError.windowNotFound
+                }
+
+                let scaleFactor = await MainActor.run {
+                    Self.screen(containing: windowFrame)?.backingScaleFactor ?? 2.0
+                }
+                config.width = max(1, Int(window.frame.width * scaleFactor))
+                config.height = max(1, Int(window.frame.height * scaleFactor))
+                config.ignoreShadowsSingleWindow = true
+                config.ignoreGlobalClipSingleWindow = true
+                filter = SCContentFilter(desktopIndependentWindow: window)
+                captureFrame = windowFrame
+
+            case .region(let selection):
+                guard let display = content.displays.first(where: { $0.displayID == selection.displayID }) else {
+                    throw RecordingError.displayNotFound
+                }
+                guard let screenFrame = await MainActor.run(body: {
+                    Self.screen(forDisplayID: selection.displayID)?.frame
+                }) else {
+                    throw RecordingError.displayNotFound
+                }
+
+                let localRect = CGRect(
+                    x: selection.rect.minX - screenFrame.minX,
+                    y: screenFrame.maxY - selection.rect.maxY,
+                    width: selection.rect.width,
+                    height: selection.rect.height
+                )
+                let scaleFactor = await MainActor.run {
+                    Self.screen(forDisplayID: selection.displayID)?.backingScaleFactor ?? 2.0
+                }
+                config.sourceRect = localRect
+                config.width = max(1, Int(localRect.width * scaleFactor))
+                config.height = max(1, Int(localRect.height * scaleFactor))
+                filter = SCContentFilter(display: display, excludingWindows: excludedWindows)
+                captureFrame = selection.rect
+            }
+
             let outputURL = try makeOutputURL()
-            let writerSize = followCursorCameraEnabled
-                ? outputResolution
-                : CGSize(width: config.width, height: config.height)
+            let writerSize: CGSize
+            switch target {
+            case .display:
+                writerSize = followCursorCameraEnabled
+                    ? outputResolution
+                    : CGSize(width: config.width, height: config.height)
+            case .window, .region:
+                writerSize = CGSize(width: config.width, height: config.height)
+            }
             let writerBundle = try makeWriter(
                 outputURL: outputURL,
                 width: Int(writerSize.width),
                 height: Int(writerSize.height)
             )
 
-            let filter = SCContentFilter(display: display, excludingApplications: [], exceptingWindows: [])
             let stream = SCStream(filter: filter, configuration: config, delegate: self)
 
             try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: mediaQueue)
@@ -140,7 +191,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             self.pixelBufferAdaptor = writerBundle.pixelBufferAdaptor
             self.stream = stream
             self.lastOutputURL = outputURL
-            self.captureDisplayFrame = screenFrame
+            self.captureDisplayFrame = captureFrame
             self.sessionStarted = false
             self.currentZoomScale = zoomProfile.zoomOutScale
             self.currentZoomCenter = nil
@@ -625,6 +676,18 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         NSColor(cgColor: color)?.usingColorSpace(.deviceRGB) ?? fallback
     }
 
+    private static func screen(forDisplayID displayID: CGDirectDisplayID) -> NSScreen? {
+        NSScreen.screens.first(where: { $0.displayID == displayID })
+    }
+
+    private static func screen(containing frame: CGRect) -> NSScreen? {
+        let center = CGPoint(x: frame.midX, y: frame.midY)
+        if let screen = NSScreen.screens.first(where: { $0.frame.contains(center) }) {
+            return screen
+        }
+        return NSScreen.screens.first(where: { $0.frame.intersects(frame) })
+    }
+
     private func applyPanDeadzone(
         currentCenter: CGPoint,
         targetCursor: CGPoint,
@@ -869,6 +932,7 @@ private final class SendableWriterBox: @unchecked Sendable {
 private enum RecordingError: Error {
     case invalidState
     case displayNotFound
+    case windowNotFound
     case writerConfigurationFailed
     case writerFailed(String)
     case noVideoFrame

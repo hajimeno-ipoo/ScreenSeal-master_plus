@@ -20,6 +20,7 @@ Place ScreenSeal's mosaic windows over passwords, personal data, or other sensit
 - **Persistent Settings** - Mosaic type and intensity are preserved across app restarts
 - **Screen Recording** - Record a single display to MP4 from the menu bar
 - **Recording Countdown** - Shows a 3-second countdown before recording starts
+- **Recording Target Modes** - Capture a full display, a selected window, or a selected region
 - **Click Zoom** - While the primary mouse button is pressed, zooms toward the cursor (1.8x with smooth easing)
 - **Custom Cursor Colors** - Pick separate colors and opacity for cursor highlight and click ring
 
@@ -41,10 +42,11 @@ Download the latest `ScreenSeal.zip` from the [Releases](https://github.com/nyan
 4. **Right-click** to open the context menu and change the filter type or intensity
 5. Use the **scroll wheel** to quickly adjust intensity
 6. Toggle window visibility from the menu bar
-7. Click **Start Recording** to save MP4 to `~/Movies/ScreenSeal/`
-8. A 3-second countdown appears in the center of the target display before recording starts
-9. Hold primary click while recording to trigger click-zoom
-10. Set **Cursor Highlight Color** and **Click Ring Color** before recording to customize the overlay look
+7. Choose **Recording Target** from the menu bar: **Full Display**, **Window**, or **Select Region...**
+8. Click **Start Recording** to save MP4 to `~/Movies/ScreenSeal/`
+9. A 3-second countdown appears before recording starts
+10. Hold primary click while recording to trigger click-zoom
+11. Set **Cursor Highlight Color** and **Click Ring Color** before recording to customize the overlay look
 
 ## Build
 

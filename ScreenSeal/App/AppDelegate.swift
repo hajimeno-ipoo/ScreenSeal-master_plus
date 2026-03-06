@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         Task {
             await permissionManager.requestPermissionIfNeeded()
+            await windowManager.refreshRecordingWindowOptions()
         }
     }
 
