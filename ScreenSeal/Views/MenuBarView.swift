@@ -104,7 +104,12 @@ struct MenuBarView: View {
 
     @ViewBuilder
     private var recordingSection: some View {
-        if windowManager.canStopRecording {
+        if windowManager.isCountdownActive {
+            Button("Cancel Countdown") {
+                windowManager.cancelRecordingCountdown()
+            }
+            .keyboardShortcut("r")
+        } else if windowManager.canStopRecording {
             Button("Stop Recording") {
                 windowManager.stopRecording()
             }
@@ -117,11 +122,23 @@ struct MenuBarView: View {
         }
 
         Toggle("Follow Cursor", isOn: $windowManager.followCursorRecording)
-            .disabled(windowManager.canStopRecording)
+            .disabled(windowManager.isRecordingPreparationActive)
         Toggle("Cursor Highlight", isOn: $windowManager.cursorHighlightEnabled)
-            .disabled(windowManager.canStopRecording)
+            .disabled(windowManager.isRecordingPreparationActive)
         Toggle("Click Ring", isOn: $windowManager.clickRingEnabled)
-            .disabled(windowManager.canStopRecording)
+            .disabled(windowManager.isRecordingPreparationActive)
+        Button("Cursor Highlight Color...") {
+            windowManager.openCursorHighlightColorPanel()
+        }
+        .disabled(windowManager.isRecordingPreparationActive)
+        Button("Click Ring Color...") {
+            windowManager.openClickRingColorPanel()
+        }
+        .disabled(windowManager.isRecordingPreparationActive)
+        Button("Reset Cursor Colors") {
+            windowManager.resetRecordingCursorColors()
+        }
+        .disabled(windowManager.isRecordingPreparationActive)
     }
 
     private func promptSavePreset() {

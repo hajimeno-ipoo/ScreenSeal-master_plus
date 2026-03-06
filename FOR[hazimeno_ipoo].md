@@ -11,6 +11,8 @@ ScreenSeal は、macOS のメニューバーに常駐して、画面の一部を
 4. `OverlayContentView` が加工済み画像を表示します。
 5. `RecordingService`（macOS 15+）が録画を MP4 に保存します。
 6. `PointerTrackingService` がカーソル位置とクリック状態を追跡し、クリック時ズームに使います。
+7. 録画メニューから、カーソルのハイライト色とクリックリング色も変えられます。
+8. 録画開始前には、対象画面の中央に3秒カウントダウンが出ます。
 
 ## コード構造
 - `ScreenSeal/App`: 起動、ライフサイクル
@@ -19,6 +21,8 @@ ScreenSeal は、macOS のメニューバーに常駐して、画面の一部を
 - `ScreenSeal/Processing`: 画像フィルター処理
 - `ScreenSeal/Windows`: オーバーレイウィンドウとマネージャ
 - `ScreenSeal/Views`: メニューバーUI、右クリックメニュー
+- 録画メニューでは、カーソル演出の色と透明度も変えられる
+- 録画開始前は、専用オーバーレイでカウントダウンを出してから録画を始める
 
 ## なぜこの技術を選んだ？
 - ScreenCaptureKit: macOS 標準で高性能な画面キャプチャができる
@@ -52,9 +56,9 @@ ScreenSeal は、macOS のメニューバーに常駐して、画面の一部を
 - 変更は `WindowManager` を中心に集約し、責務を混ぜない
 - 画像処理は `FilterProcessor` にまとめ、UIから分離する
 - 録画失敗とキャプチャ失敗は状態を分けて表示する
+- 録画用の見た目設定は `UserDefaults` に保存し、次回起動でも同じ状態にする
 - パフォーマンス問題は「解像度、FPS、queueDepth」から先に見る
 
 ## 実行・ビルド
 - ビルド:
   - `xcodebuild -project ScreenSeal.xcodeproj -scheme ScreenSeal -configuration Release build`
-

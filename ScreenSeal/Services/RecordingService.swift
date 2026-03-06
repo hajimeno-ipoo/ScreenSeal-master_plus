@@ -9,6 +9,19 @@ private let recordingLogger = Logger(subsystem: "com.screenseal.app", category: 
 
 @available(macOS 15.0, *)
 final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
+    private static let defaultHighlightColor = NSColor(
+        deviceRed: 0.10,
+        green: 0.65,
+        blue: 1.0,
+        alpha: 0.52
+    )
+    private static let defaultClickRingColor = NSColor(
+        deviceRed: 0.10,
+        green: 0.72,
+        blue: 1.0,
+        alpha: 0.95
+    )
+
     private let outputResolution = CGSize(width: 1920, height: 1080)
     private let idleCameraScale: CGFloat = 0.6
     private let idlePanDeadzoneRatio: CGFloat = 0.20
@@ -18,13 +31,13 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
     private let cursorHighlightEnabled: Bool
     private let clickRingEnabled: Bool
     private let highlightRadius: CGFloat = 100
-    private let highlightColor = CIColor(red: 0.10, green: 0.65, blue: 1.0, alpha: 0.52)
+    private let highlightColor: NSColor
     private let clickRingDuration: CFTimeInterval = 0.9
     private let clickRingBaseRadius: CGFloat = 20
     private let clickRingMaxRadius: CGFloat = 90
     private let clickRingSpacing: CGFloat = 30
     private let clickRingLineWidth: CGFloat = 6
-    private let clickRingColor = CIColor(red: 0.10, green: 0.72, blue: 1.0, alpha: 0.95)
+    private let clickRingColor: NSColor
     private var stream: SCStream?
     private var writer: AVAssetWriter?
     private var videoInput: AVAssetWriterInput?
@@ -54,11 +67,21 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
     init(
         followCursorCameraEnabled: Bool = true,
         cursorHighlightEnabled: Bool = true,
-        clickRingEnabled: Bool = true
+        clickRingEnabled: Bool = true,
+        cursorHighlightColor: CGColor = RecordingService.defaultHighlightColor.cgColor,
+        clickRingColor: CGColor = RecordingService.defaultClickRingColor.cgColor
     ) {
         self.followCursorCameraEnabled = followCursorCameraEnabled
         self.cursorHighlightEnabled = cursorHighlightEnabled
         self.clickRingEnabled = clickRingEnabled
+        self.highlightColor = Self.normalizedColor(
+            from: cursorHighlightColor,
+            fallback: Self.defaultHighlightColor
+        )
+        self.clickRingColor = Self.normalizedColor(
+            from: clickRingColor,
+            fallback: Self.defaultClickRingColor
+        )
     }
 
     func start(displayID: CGDirectDisplayID) async throws -> URL {
@@ -483,10 +506,10 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         if cursorHighlightEnabled, let cursorPoint {
             let highlightAlphaMultiplier: CGFloat = isRingActive ? 0.75 : 1.0
             let effectiveHighlightColor = CIColor(
-                red: highlightColor.red,
-                green: highlightColor.green,
-                blue: highlightColor.blue,
-                alpha: highlightColor.alpha * highlightAlphaMultiplier
+                red: highlightColor.redComponent,
+                green: highlightColor.greenComponent,
+                blue: highlightColor.blueComponent,
+                alpha: highlightColor.alphaComponent * highlightAlphaMultiplier
             )
             let highlight = makeRadialGradientImage(
                 center: cursorPoint,
@@ -547,12 +570,13 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         let fade = max(0.45, 1 - progress)
         let radius = clickRingBaseRadius + ((clickRingMaxRadius - clickRingBaseRadius) * progress)
         let innerRadius = max(1, radius - clickRingSpacing)
-        let ringColor = CGColor(
-            red: clickRingColor.red,
-            green: clickRingColor.green,
-            blue: clickRingColor.blue,
-            alpha: clickRingColor.alpha * fade
+        let ringColor = NSColor(
+            deviceRed: clickRingColor.redComponent,
+            green: clickRingColor.greenComponent,
+            blue: clickRingColor.blueComponent,
+            alpha: clickRingColor.alphaComponent * fade
         )
+        .cgColor
 
         let width = max(1, Int(outputSize.width.rounded()))
         let height = max(1, Int(outputSize.height.rounded()))
@@ -595,6 +619,10 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
 
         guard let cgImage = context.makeImage() else { return nil }
         return CIImage(cgImage: cgImage).cropped(to: CGRect(origin: .zero, size: outputSize))
+    }
+
+    private static func normalizedColor(from color: CGColor, fallback: NSColor) -> NSColor {
+        NSColor(cgColor: color)?.usingColorSpace(.deviceRGB) ?? fallback
     }
 
     private func applyPanDeadzone(

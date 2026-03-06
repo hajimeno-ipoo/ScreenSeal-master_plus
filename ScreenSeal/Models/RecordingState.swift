@@ -2,6 +2,7 @@ import Foundation
 
 enum RecordingState: Equatable {
     case idle
+    case countdown(secondsRemaining: Int)
     case starting
     case recording(url: URL, startedAt: Date)
     case stopping
@@ -16,6 +17,8 @@ enum RecordingState: Equatable {
         switch self {
         case .idle:
             return nil
+        case .countdown(let secondsRemaining):
+            return "Recording starts in \(secondsRemaining)..."
         case .starting:
             return "Recording: starting..."
         case .recording(_, let startedAt):

@@ -5,13 +5,132 @@ import os.log
 
 private let logger = Logger(subsystem: "com.screenseal.app", category: "WindowManager")
 
+private final class CountdownOverlayView: NSView {
+    private let label = NSTextField(labelWithString: "")
+
+    init(seconds: Int) {
+        super.init(frame: NSRect(x: 0, y: 0, width: 220, height: 220))
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.black.withAlphaComponent(0.72).cgColor
+        layer?.cornerRadius = 28
+
+        label.font = .systemFont(ofSize: 120, weight: .bold)
+        label.textColor = .white
+        label.alignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(label)
+
+        NSLayoutConstraint.activate([
+            label.centerXAnchor.constraint(equalTo: centerXAnchor),
+            label.centerYAnchor.constraint(equalTo: centerYAnchor)
+        ])
+
+        update(seconds: seconds)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func update(seconds: Int) {
+        label.stringValue = "\(seconds)"
+    }
+}
+
+private final class CountdownOverlayWindow: NSWindow {
+    private let countdownView: CountdownOverlayView
+
+    init(screen: NSScreen, seconds: Int) {
+        self.countdownView = CountdownOverlayView(seconds: seconds)
+
+        let size = countdownView.frame.size
+        let frame = NSRect(
+            x: screen.frame.midX - (size.width / 2),
+            y: screen.frame.midY - (size.height / 2),
+            width: size.width,
+            height: size.height
+        )
+
+        super.init(
+            contentRect: frame,
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+
+        level = .statusBar
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = false
+        ignoresMouseEvents = true
+        isReleasedWhenClosed = false
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        contentView = countdownView
+        setFrame(frame, display: false)
+    }
+
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+
+    func update(seconds: Int) {
+        countdownView.update(seconds: seconds)
+    }
+}
+
+private final class ColorPanelCoordinator: NSObject {
+    private var onChange: ((CGColor) -> Void)?
+
+    func present(title: String, color: CGColor, onChange: @escaping (CGColor) -> Void) {
+        self.onChange = onChange
+
+        let panel = NSColorPanel.shared
+        panel.title = title
+        panel.showsAlpha = true
+        panel.isContinuous = true
+        panel.setTarget(self)
+        panel.setAction(#selector(handleColorChange(_:)))
+        panel.color = NSColor(cgColor: color)?.usingColorSpace(.deviceRGB) ?? .white
+        panel.orderFrontRegardless()
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc
+    private func handleColorChange(_ sender: NSColorPanel) {
+        guard let cgColor = sender.color.usingColorSpace(.deviceRGB)?.cgColor else { return }
+        onChange?(cgColor)
+    }
+}
+
 final class WindowManager: ObservableObject {
+    private static let recordingCountdownSeconds = 3
+    private static let cursorHighlightColorKey = "ScreenSeal.cursorHighlightColor"
+    private static let clickRingColorKey = "ScreenSeal.clickRingColor"
+    private static let defaultCursorHighlightColor = CGColor(
+        red: 0.10,
+        green: 0.65,
+        blue: 1.0,
+        alpha: 0.52
+    )
+    private static let defaultClickRingColor = CGColor(
+        red: 0.10,
+        green: 0.72,
+        blue: 1.0,
+        alpha: 0.95
+    )
+
     @Published private(set) var windows: [OverlayWindow] = []
     @Published var captureError: String?
     @Published var recordingState: RecordingState = .idle
     @Published var followCursorRecording = true
     @Published var cursorHighlightEnabled = true
     @Published var clickRingEnabled = true
+    @Published var cursorHighlightColor: CGColor {
+        didSet { Self.saveColor(cursorHighlightColor, forKey: Self.cursorHighlightColorKey) }
+    }
+    @Published var clickRingColor: CGColor {
+        didSet { Self.saveColor(clickRingColor, forKey: Self.clickRingColorKey) }
+    }
 
     let presetManager = PresetManager()
 
@@ -19,6 +138,9 @@ final class WindowManager: ObservableObject {
     private var isStopping = false
     private var nextIndex = 1
     private var wakeObserver: Any?
+    private let colorPanelCoordinator = ColorPanelCoordinator()
+    private var countdownTask: Task<Void, Never>?
+    private var countdownOverlayWindow: CountdownOverlayWindow?
 
     private var recordingServiceRef: AnyObject?
 
@@ -27,12 +149,34 @@ final class WindowManager: ObservableObject {
         switch recordingState {
         case .starting, .recording, .stopping:
             return true
+        case .idle, .countdown, .failed:
+            return false
+        }
+    }
+
+    var isCountdownActive: Bool {
+        if case .countdown = recordingState { return true }
+        return false
+    }
+
+    var isRecordingPreparationActive: Bool {
+        switch recordingState {
+        case .countdown, .starting, .recording, .stopping:
+            return true
         case .idle, .failed:
             return false
         }
     }
 
     init() {
+        self.cursorHighlightColor = Self.loadColor(
+            forKey: Self.cursorHighlightColorKey,
+            fallback: Self.defaultCursorHighlightColor
+        )
+        self.clickRingColor = Self.loadColor(
+            forKey: Self.clickRingColorKey,
+            fallback: Self.defaultClickRingColor
+        )
         wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification,
             object: nil,
@@ -44,6 +188,8 @@ final class WindowManager: ObservableObject {
     }
 
     deinit {
+        countdownTask?.cancel()
+        dismissCountdownOverlay()
         if let observer = wakeObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(observer)
         }
@@ -89,47 +235,22 @@ final class WindowManager: ObservableObject {
     // MARK: - Recording
 
     func startRecording() {
-        if case .starting = recordingState { return }
-        if case .stopping = recordingState { return }
-        if recordingState.isRecording { return }
+        if isRecordingPreparationActive { return }
 
         guard #available(macOS 15.0, *) else {
             recordingState = .failed(message: "録画機能は macOS 15.0 以降で利用できます")
             return
         }
 
-        let targetDisplayID = preferredRecordingDisplayID()
-        let service = (recordingServiceRef as? RecordingService)
-            ?? RecordingService(
-                followCursorCameraEnabled: followCursorRecording,
-                cursorHighlightEnabled: cursorHighlightEnabled,
-                clickRingEnabled: clickRingEnabled
-            )
-        service.onStateChange = { [weak self] state in
-            DispatchQueue.main.async {
-                self?.recordingState = state
-                if case .idle = state {
-                    self?.recordingServiceRef = nil
-                } else if case .failed = state {
-                    self?.recordingServiceRef = nil
-                }
-            }
-        }
-        recordingServiceRef = service
-
-        Task {
-            do {
-                _ = try await service.start(displayID: targetDisplayID)
-            } catch {
-                await MainActor.run {
-                    self.recordingServiceRef = nil
-                    self.recordingState = .failed(message: "録画開始に必要な権限が不足、または開始に失敗しました")
-                }
-            }
-        }
+        beginRecordingCountdown(displayID: preferredRecordingDisplayID())
     }
 
     func stopRecording() {
+        if isCountdownActive {
+            cancelRecordingCountdown()
+            return
+        }
+
         guard #available(macOS 15.0, *), let service = recordingServiceRef as? RecordingService else { return }
 
         Task {
@@ -156,12 +277,158 @@ final class WindowManager: ObservableObject {
         }
     }
 
+    func cancelRecordingCountdown() {
+        countdownTask?.cancel()
+        countdownTask = nil
+        dismissCountdownOverlay()
+        if isCountdownActive {
+            recordingState = .idle
+        }
+    }
+
+    func openCursorHighlightColorPanel() {
+        colorPanelCoordinator.present(
+            title: "Cursor Highlight Color",
+            color: cursorHighlightColor
+        ) { [weak self] color in
+            self?.cursorHighlightColor = color
+        }
+    }
+
+    func openClickRingColorPanel() {
+        colorPanelCoordinator.present(
+            title: "Click Ring Color",
+            color: clickRingColor
+        ) { [weak self] color in
+            self?.clickRingColor = color
+        }
+    }
+
+    func resetRecordingCursorColors() {
+        cursorHighlightColor = Self.defaultCursorHighlightColor
+        clickRingColor = Self.defaultClickRingColor
+    }
+
+    @available(macOS 15.0, *)
+    private func beginRecordingCountdown(displayID: CGDirectDisplayID) {
+        countdownTask?.cancel()
+        showCountdownOverlay(seconds: Self.recordingCountdownSeconds, displayID: displayID)
+        recordingState = .countdown(secondsRemaining: Self.recordingCountdownSeconds)
+
+        countdownTask = Task { [weak self] in
+            guard let self else { return }
+
+            for secondsRemaining in stride(from: Self.recordingCountdownSeconds, through: 1, by: -1) {
+                if Task.isCancelled { return }
+
+                await MainActor.run {
+                    self.recordingState = .countdown(secondsRemaining: secondsRemaining)
+                    self.showCountdownOverlay(seconds: secondsRemaining, displayID: displayID)
+                }
+
+                do {
+                    try await Task.sleep(nanoseconds: 1_000_000_000)
+                } catch {
+                    return
+                }
+            }
+
+            if Task.isCancelled { return }
+
+            await MainActor.run {
+                self.countdownTask = nil
+                self.dismissCountdownOverlay()
+                self.recordingState = .starting
+                self.startRecordingNow(displayID: displayID)
+            }
+        }
+    }
+
+    @available(macOS 15.0, *)
+    private func startRecordingNow(displayID: CGDirectDisplayID) {
+        let service = (recordingServiceRef as? RecordingService)
+            ?? RecordingService(
+                followCursorCameraEnabled: followCursorRecording,
+                cursorHighlightEnabled: cursorHighlightEnabled,
+                clickRingEnabled: clickRingEnabled,
+                cursorHighlightColor: cursorHighlightColor,
+                clickRingColor: clickRingColor
+            )
+        service.onStateChange = { [weak self] state in
+            DispatchQueue.main.async {
+                self?.recordingState = state
+                if case .idle = state {
+                    self?.recordingServiceRef = nil
+                } else if case .failed = state {
+                    self?.recordingServiceRef = nil
+                }
+            }
+        }
+        recordingServiceRef = service
+
+        Task {
+            do {
+                _ = try await service.start(displayID: displayID)
+            } catch {
+                await MainActor.run {
+                    self.recordingServiceRef = nil
+                    self.recordingState = .failed(message: "録画開始に必要な権限が不足、または開始に失敗しました")
+                }
+            }
+        }
+    }
+
     private func preferredRecordingDisplayID() -> CGDirectDisplayID {
         if let firstVisibleWindow = windows.first(where: { $0.isVisible }),
            let displayID = firstVisibleWindow.screen?.displayID {
             return displayID
         }
         return CGMainDisplayID()
+    }
+
+    private func showCountdownOverlay(seconds: Int, displayID: CGDirectDisplayID) {
+        guard let screen = NSScreen.screens.first(where: { $0.displayID == displayID })
+            ?? NSScreen.screens.first else {
+            return
+        }
+
+        if let window = countdownOverlayWindow, window.screen?.displayID == screen.displayID {
+            window.update(seconds: seconds)
+            window.orderFrontRegardless()
+            return
+        }
+
+        dismissCountdownOverlay()
+        let window = CountdownOverlayWindow(screen: screen, seconds: seconds)
+        countdownOverlayWindow = window
+        window.orderFrontRegardless()
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func dismissCountdownOverlay() {
+        countdownOverlayWindow?.orderOut(nil)
+        countdownOverlayWindow?.close()
+        countdownOverlayWindow = nil
+    }
+
+    private static func saveColor(_ color: CGColor, forKey key: String) {
+        guard let normalizedColor = NSColor(cgColor: color)?.usingColorSpace(.deviceRGB),
+              let data = try? NSKeyedArchiver.archivedData(
+                withRootObject: normalizedColor,
+                requiringSecureCoding: true
+              ) else {
+            return
+        }
+        UserDefaults.standard.set(data, forKey: key)
+    }
+
+    private static func loadColor(forKey key: String, fallback: CGColor) -> CGColor {
+        guard let data = UserDefaults.standard.data(forKey: key),
+              let color = try? NSKeyedUnarchiver.unarchivedObject(ofClass: NSColor.self, from: data),
+              let normalizedColor = color.usingColorSpace(.deviceRGB) else {
+            return fallback
+        }
+        return normalizedColor.cgColor
     }
 
     // MARK: - Presets
