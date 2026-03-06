@@ -89,7 +89,8 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
     func start(
         target: ResolvedRecordingTarget,
         excludedApplications: [SCRunningApplication] = [],
-        exceptingWindows: [SCWindow] = []
+        exceptingWindows: [SCWindow] = [],
+        overlayWindowIDs: [CGWindowID] = []
     ) async throws -> URL {
         guard case .idle = state else {
             throw RecordingError.invalidState
@@ -133,17 +134,29 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
                 )
                 captureFrame = frame
 
-            case .window(let windowID, let windowFrame, _):
-                guard let window = content.windows.first(where: { $0.windowID == windowID }) else {
+            case .window(let windowID, let windowFrame, let displayID, let displayFrame):
+                guard content.windows.contains(where: { $0.windowID == windowID }) else {
                     throw RecordingError.windowNotFound
+                }
+                guard let display = content.displays.first(where: { $0.displayID == displayID }) else {
+                    throw RecordingError.displayNotFound
                 }
 
                 let scaleFactor = await MainActor.run {
                     Self.screen(containing: windowFrame)?.backingScaleFactor ?? 2.0
                 }
-                config.width = max(1, Int(window.frame.width * scaleFactor))
-                config.height = max(1, Int(window.frame.height * scaleFactor))
-                filter = SCContentFilter(desktopIndependentWindow: window)
+                let localRect = CGRect(
+                    x: windowFrame.minX - displayFrame.minX,
+                    y: displayFrame.maxY - windowFrame.maxY,
+                    width: windowFrame.width,
+                    height: windowFrame.height
+                )
+                let includedWindowIDs = Set(overlayWindowIDs).union([windowID])
+                let includedWindows = content.windows.filter { includedWindowIDs.contains($0.windowID) }
+                config.sourceRect = localRect
+                config.width = max(1, Int(localRect.width * scaleFactor))
+                config.height = max(1, Int(localRect.height * scaleFactor))
+                filter = SCContentFilter(display: display, including: includedWindows)
                 captureFrame = windowFrame
 
             case .region(let selection):
@@ -389,7 +402,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         outputSize: CGSize
     ) {
         guard remainingWindowDebugLogs > 0 else { return }
-        guard case .window(let windowID, let windowFrame, _) = activeTarget else { return }
+        guard case .window(let windowID, let windowFrame, _, _) = activeTarget else { return }
 
         remainingWindowDebugLogs -= 1
         let attachments = sampleBufferAttachments(from: sampleBuffer)

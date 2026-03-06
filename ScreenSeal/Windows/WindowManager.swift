@@ -104,14 +104,14 @@ struct RecordingRegionSelection: Equatable {
 
 enum ResolvedRecordingTarget: Equatable {
     case display(displayID: CGDirectDisplayID, frame: CGRect)
-    case window(windowID: CGWindowID, windowFrame: CGRect, displayFrame: CGRect)
+    case window(windowID: CGWindowID, windowFrame: CGRect, displayID: CGDirectDisplayID, displayFrame: CGRect)
     case region(RecordingRegionSelection)
 
     var countdownCenterPoint: CGPoint {
         switch self {
         case .display(_, let frame):
             return CGPoint(x: frame.midX, y: frame.midY)
-        case .window(_, let windowFrame, _):
+        case .window(_, let windowFrame, _, _):
             return CGPoint(x: windowFrame.midX, y: windowFrame.midY)
         case .region(let selection):
             return CGPoint(x: selection.rect.midX, y: selection.rect.midY)
@@ -1028,13 +1028,15 @@ final class WindowManager: ObservableObject {
                 let recordingFilterContext = await MainActor.run {
                     (
                         excludedApplications: self.excludedRecordingApplications(from: shareableContent),
-                        exceptingWindows: self.exceptedRecordingWindows(from: shareableContent)
+                        exceptingWindows: self.exceptedRecordingWindows(from: shareableContent),
+                        overlayWindowIDs: self.windows.map { CGWindowID($0.windowNumber) }
                     )
                 }
                 _ = try await service.start(
                     target: target,
                     excludedApplications: recordingFilterContext.excludedApplications,
-                    exceptingWindows: recordingFilterContext.exceptingWindows
+                    exceptingWindows: recordingFilterContext.exceptingWindows,
+                    overlayWindowIDs: recordingFilterContext.overlayWindowIDs
                 )
             } catch {
                 await MainActor.run {
@@ -1047,6 +1049,7 @@ final class WindowManager: ObservableObject {
         }
     }
 
+    @MainActor
     private func preferredRecordingDisplayID() -> CGDirectDisplayID {
         if let firstVisibleWindow = windows.first(where: { $0.isVisible }),
            let displayID = firstVisibleWindow.screen?.displayID {
@@ -1142,7 +1145,9 @@ final class WindowManager: ObservableObject {
     private func resolveRecordingTarget() async throws -> ResolvedRecordingTarget {
         switch recordingTarget {
         case .display:
-            let displayID = preferredRecordingDisplayID()
+            let displayID = await MainActor.run {
+                preferredRecordingDisplayID()
+            }
             let frame = await MainActor.run {
                 NSScreen.screens.first(where: { $0.displayID == displayID })?.frame
                     ?? NSScreen.main?.frame
@@ -1168,7 +1173,12 @@ final class WindowManager: ObservableObject {
                 width: window.frame.width,
                 height: window.frame.height
             )
-            return .window(windowID: windowID, windowFrame: windowFrame, displayFrame: displayFrame)
+            return .window(
+                windowID: windowID,
+                windowFrame: windowFrame,
+                displayID: displayID,
+                displayFrame: displayFrame
+            )
 
         case .region(let selection):
             let frame = await MainActor.run {
@@ -1310,7 +1320,7 @@ final class WindowManager: ObservableObject {
             let scaleY = frameExtent.height / screenFrame.height
 
             let localX = windowRect.origin.x - screenFrame.origin.x
-            let localY = windowRect.origin.y - screenFrame.origin.y
+            let localY = screenFrame.maxY - windowRect.maxY
 
             let captureX = localX * scaleX
             let captureY = localY * scaleY
