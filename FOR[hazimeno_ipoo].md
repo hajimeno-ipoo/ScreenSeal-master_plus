@@ -44,6 +44,10 @@ ScreenSeal は、macOS のメニューバーに常駐して、画面の一部を
   - 原因: 補間時間が短すぎる
   - 修正: `ZoomProfile.easingDuration` を少し長くする
 
+- 症状: `Follow Cursor` をONにすると、範囲選択録画で黒い余白が出る
+  - 原因: 切り抜き枠が元画像より大きくなっていた
+  - 修正: `RecordingService.applyFollowCursorCamera` で切り抜きサイズを `image.extent` 以内に制限する
+
 ## 落とし穴と回避方法
 - 落とし穴: ディスプレイ座標系とキャプチャ座標系のズレ
   - 回避: `screen.frame` と `CIImage.extent` から毎フレーム換算する

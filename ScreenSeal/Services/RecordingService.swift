@@ -624,16 +624,19 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         let effectiveScale = shouldZoom
             ? currentZoomScale
             : max(0.01, currentZoomScale * idleCameraScale)
-        let zoomedWidth = baseCropSize.width / effectiveScale
-        let zoomedHeight = baseCropSize.height / effectiveScale
+        let zoomedWidth = min(baseCropSize.width / effectiveScale, extent.width)
+        let zoomedHeight = min(baseCropSize.height / effectiveScale, extent.height)
+        let cropCenterX = zoomedWidth >= extent.width ? extent.midX : zoomCenter.x
+        let cropCenterY = zoomedHeight >= extent.height ? extent.midY : zoomCenter.y
         let minX = extent.minX
         let minY = extent.minY
         let maxX = extent.maxX - zoomedWidth
         let maxY = extent.maxY - zoomedHeight
 
-        let clampedX = min(max(zoomCenter.x - (zoomedWidth / 2), minX), maxX)
-        let clampedY = min(max(zoomCenter.y - (zoomedHeight / 2), minY), maxY)
+        let clampedX = min(max(cropCenterX - (zoomedWidth / 2), minX), maxX)
+        let clampedY = min(max(cropCenterY - (zoomedHeight / 2), minY), maxY)
         let cropRect = CGRect(x: clampedX, y: clampedY, width: zoomedWidth, height: zoomedHeight)
+            .intersection(extent)
 
         let translated = image
             .cropped(to: cropRect)
