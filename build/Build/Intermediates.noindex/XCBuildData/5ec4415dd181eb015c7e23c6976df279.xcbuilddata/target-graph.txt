@@ -1,2 +1,0 @@
-Target dependency graph (1 target)
-Target 'ScreenSeal' in project 'ScreenSeal' (no dependencies)
