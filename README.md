@@ -1,4 +1,4 @@
-<img src="ScreenSeal/Resources/Assets.xcassets/icon.appiconset/icon_385x385.png" width="128" alt="ScreenSeal Icon">
+<img src="ScreenSeal/Resources/IconSources/icon_2048x2048_plus.png" width="128" alt="ScreenSeal Icon">
 
 # ScreenSeal_plus
 
