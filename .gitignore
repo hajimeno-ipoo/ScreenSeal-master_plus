@@ -21,6 +21,10 @@ DerivedData/
 .codex-debug-frames/
 .codex-debug-frames-*/
 
+# Local docs not for GitHub
+release-notes/
+FOR[[]hazimeno_ipoo[]].md
+
 # Optional local env files
 .env
 .env.*
