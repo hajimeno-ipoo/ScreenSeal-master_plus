@@ -551,7 +551,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             elapsed: elapsed,
             duration: zoomProfile.easingDuration
         )
-        let blendProgress = zoomBlendProgress(for: currentZoomScale)
+        let blendProgress = zoomBlendProgress(for: currentZoomScale, isEntering: shouldZoom)
 
         if shouldZoom {
             let initialCenter = currentZoomCenter ?? pointer.zoomAnchorLocation.map {
@@ -624,7 +624,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             elapsed: elapsed,
             duration: zoomProfile.easingDuration
         )
-        let blendProgress = zoomBlendProgress(for: currentZoomScale)
+        let blendProgress = zoomBlendProgress(for: currentZoomScale, isEntering: shouldZoom)
 
         let cursorPoint = convertScreenPointToImagePoint(targetLocation, imageExtent: extent)
         let initialCenter = currentZoomCenter ?? pointer.zoomAnchorLocation.map {
@@ -955,9 +955,11 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         )
     }
 
-    private func zoomBlendProgress(for scale: CGFloat) -> CGFloat {
+    private func zoomBlendProgress(for scale: CGFloat, isEntering: Bool) -> CGFloat {
         let range = max(0.001, zoomProfile.zoomInScale - zoomProfile.zoomOutScale)
-        return min(max((scale - zoomProfile.zoomOutScale) / range, 0), 1)
+        let progress = min(max((scale - zoomProfile.zoomOutScale) / range, 0), 1)
+        guard isEntering else { return progress }
+        return progress * progress
     }
 
     private func renderedImage(_ image: CIImage, from sourceRect: CGRect, outputSize: CGSize) -> CIImage {
