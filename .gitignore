@@ -17,6 +17,7 @@ DerivedData/
 *.zip
 
 # Tool local data
+.codex/skills/
 .serena/
 .codex-debug-frames/
 .codex-debug-frames-*/
