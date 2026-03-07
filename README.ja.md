@@ -4,7 +4,7 @@
 
 画面上の機密情報をモザイクで隠すための macOS メニューバーアプリ。
 
-画面収録やスクリーンショット撮影時に、ScreenSeal のモザイクウィンドウを配置することで、パスワードや個人情報などを安全に隠せます。モザイクウィンドウ自体はスクリーンショットや画面共有に映らず、モザイク効果のみが反映されます。
+画面収録やスクリーンショット撮影時に、ScreenSeal_plus のモザイクウィンドウを配置することで、パスワードや個人情報などを安全に隠せます。モザイクウィンドウ自体はスクリーンショットや画面共有に映らず、モザイク効果のみが反映されます。
 
 ## Features
 
@@ -30,7 +30,7 @@
 
 ## Installation
 
-[Releases](https://github.com/nyanko3141592/ScreenSeal/releases) ページから最新の `ScreenSeal.zip` をダウンロードして解凍し、`ScreenSeal.app` を Applications フォルダに移動してください。
+[Releases](https://github.com/nyanko3141592/ScreenSeal/releases) ページから最新の `ScreenSeal_plus-macOS.zip` をダウンロードして解凍し、`ScreenSeal_plus.app` を Applications フォルダに移動してください。
 
 ## Usage
 
@@ -42,8 +42,8 @@
 6. メニューバーからウィンドウの表示/非表示を切り替え
 7. **Capture Mode** で **Record** または **Screenshot** を選びます
 8. **Capture Target** で **Full Display** / **Window** / **Select Region...** を選びます
-9. **Record** モードでは **Start Recording** で `~/Movies/ScreenSeal/` に MP4 保存
-10. **Screenshot** モードでは右隣のボタン、または **Take Screenshot** で `~/Pictures/ScreenSeal/` に PNG 保存
+9. **Record** モードでは **Start Recording** で `~/Movies/ScreenSeal_plus/` に MP4 保存
+10. **Screenshot** モードでは右隣のボタン、または **Take Screenshot** で `~/Pictures/ScreenSeal_plus/` に PNG 保存
 11. **Screenshot Click Action** でスクショの開き先を **Finder** / **Preview** から選びます
 12. **Recording Click Action** で録画の開き先を **Finder** / **QuickTime** から選びます
 13. 保存後は画面上にサムネイルが出て、クリックすると選んだアプリで開きます
@@ -52,7 +52,8 @@
 ## Build
 
 ```bash
-xcodebuild -project ScreenSeal.xcodeproj -scheme ScreenSeal -configuration Release build
+xcodebuild -project ScreenSeal.xcodeproj -scheme ScreenSeal -configuration Release -derivedDataPath build build
+ditto -c -k --sequesterRsrc --keepParent build/Build/Products/Release/ScreenSeal_plus.app ScreenSeal_plus-macOS.zip
 ```
 
 ## Tech Stack

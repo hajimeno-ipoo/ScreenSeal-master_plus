@@ -1,7 +1,7 @@
 # FOR[hazimeno_ipoo]
 
 ## このプロジェクトは何？
-ScreenSeal は、macOS のメニューバーに常駐して、画面の一部をモザイクで隠すアプリです。
+ScreenSeal_plus は、macOS のメニューバーに常駐して、画面の一部をモザイクで隠すアプリです。
 録画中や画面共有中に、パスワードや個人情報を見せないために使います。
 
 ## 技術アーキテクチャ（全体の仕組み）
@@ -27,8 +27,8 @@ ScreenSeal は、macOS のメニューバーに常駐して、画面の一部を
 - `ScreenSeal/Windows`: オーバーレイウィンドウとマネージャ
 - `ScreenSeal/Views`: メニューバーUI、右クリックメニュー
 - 録画メニューでは、カーソル演出の色と透明度も変えられる
-- スクリーンショットは `~/Pictures/ScreenSeal/` に PNG で保存する
-- 録画は `~/Movies/ScreenSeal/` に MP4 で保存する
+- スクリーンショットは `~/Pictures/ScreenSeal_plus/` に PNG で保存する
+- 録画は `~/Movies/ScreenSeal_plus/` に MP4 で保存する
 - 保存後サムネイルは `WindowManager` の専用オーバーレイで表示する
 - 録画サムネイルは `AVAssetImageGenerator` で MP4 から静止画を作る
 - 録画開始前は、専用オーバーレイでカウントダウンを出してから録画を始める
@@ -50,7 +50,7 @@ ScreenSeal は、macOS のメニューバーに常駐して、画面の一部を
 
 - 症状: スクリーンショットが保存されない
   - 原因: Screen Recording 権限不足、または保存先の作成失敗
-  - 修正: 権限を許可し、`~/Pictures/ScreenSeal/` が作れるか確認する
+  - 修正: 権限を許可し、`~/Pictures/ScreenSeal_plus/` が作れるか確認する
 
 - 症状: 保存後サムネイルが真っ黒になる
   - 原因: 画像の受け渡し方法が不適切で、プレビュー表示側が正しく描画できていない

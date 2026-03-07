@@ -1059,12 +1059,12 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         let movies = FileManager.default.urls(for: .moviesDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Movies", isDirectory: true)
 
-        let directory = movies.appendingPathComponent("ScreenSeal", isDirectory: true)
+        let directory = movies.appendingPathComponent("ScreenSeal_plus", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd-HHmmss"
-        let fileName = "ScreenSeal-\(formatter.string(from: Date())).mp4"
+        let fileName = "ScreenSeal_plus-\(formatter.string(from: Date())).mp4"
         return directory.appendingPathComponent(fileName, isDirectory: false)
     }
 }

@@ -96,7 +96,7 @@ struct MenuBarView: View {
 
         Divider()
 
-        Button("Quit ScreenSeal") {
+        Button("Quit ScreenSeal_plus") {
             NSApplication.shared.terminate(nil)
         }
         .keyboardShortcut("q")

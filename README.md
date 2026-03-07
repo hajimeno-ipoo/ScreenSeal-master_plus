@@ -4,7 +4,7 @@
 
 A macOS menu bar app for hiding sensitive information on screen with mosaic overlays.
 
-Place ScreenSeal's mosaic windows over passwords, personal data, or other sensitive content during screen recordings and screenshots. The mosaic window itself is invisible to screenshots and screen sharing — only the mosaic effect is captured.
+Place ScreenSeal_plus mosaic windows over passwords, personal data, or other sensitive content during screen recordings and screenshots. The mosaic window itself is invisible to screenshots and screen sharing - only the mosaic effect is captured.
 
 [日本語版 README はこちら](README.ja.md)
 
@@ -35,7 +35,7 @@ Place ScreenSeal's mosaic windows over passwords, personal data, or other sensit
 
 ## Installation
 
-Download the latest `ScreenSeal.zip` from the [Releases](https://github.com/nyanko3141592/ScreenSeal/releases) page, extract it, and move `ScreenSeal.app` to your Applications folder.
+Download the latest `ScreenSeal_plus-macOS.zip` from the [Releases](https://github.com/nyanko3141592/ScreenSeal/releases) page, extract it, and move `ScreenSeal_plus.app` to your Applications folder.
 
 ## Usage
 
@@ -47,8 +47,8 @@ Download the latest `ScreenSeal.zip` from the [Releases](https://github.com/nyan
 6. Toggle window visibility from the menu bar
 7. Choose **Capture Mode**: **Record** or **Screenshot**
 8. Choose **Capture Target**: **Full Display**, **Window**, or **Select Region...**
-9. In **Record** mode, click **Start Recording** to save MP4 to `~/Movies/ScreenSeal/`
-10. In **Screenshot** mode, click the side menu bar button or **Take Screenshot** to save PNG to `~/Pictures/ScreenSeal/`
+9. In **Record** mode, click **Start Recording** to save MP4 to `~/Movies/ScreenSeal_plus/`
+10. In **Screenshot** mode, click the side menu bar button or **Take Screenshot** to save PNG to `~/Pictures/ScreenSeal_plus/`
 11. Pick **Screenshot Click Action**: **Finder** or **Preview**
 12. Pick **Recording Click Action**: **Finder** or **QuickTime**
 13. After saving, a thumbnail preview appears on screen; click it to open the saved file with the selected app
@@ -59,7 +59,8 @@ Download the latest `ScreenSeal.zip` from the [Releases](https://github.com/nyan
 ## Build
 
 ```bash
-xcodebuild -project ScreenSeal.xcodeproj -scheme ScreenSeal -configuration Release build
+xcodebuild -project ScreenSeal.xcodeproj -scheme ScreenSeal -configuration Release -derivedDataPath build build
+ditto -c -k --sequesterRsrc --keepParent build/Build/Products/Release/ScreenSeal_plus.app ScreenSeal_plus-macOS.zip
 ```
 
 ## Tech Stack

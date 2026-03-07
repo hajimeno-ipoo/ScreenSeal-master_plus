@@ -808,10 +808,10 @@ private final class ColorPanelCoordinator: NSObject {
 
 final class WindowManager: ObservableObject {
     private static let recordingCountdownSeconds = 3
-    private static let cursorHighlightColorKey = "ScreenSeal.cursorHighlightColor"
-    private static let clickRingColorKey = "ScreenSeal.clickRingColor"
-    private static let screenshotOpenActionKey = "ScreenSeal.screenshotOpenAction"
-    private static let recordingOpenActionKey = "ScreenSeal.recordingOpenAction"
+    private static let cursorHighlightColorKey = "ScreenSeal_plus.cursorHighlightColor"
+    private static let clickRingColorKey = "ScreenSeal_plus.clickRingColor"
+    private static let screenshotOpenActionKey = "ScreenSeal_plus.screenshotOpenAction"
+    private static let recordingOpenActionKey = "ScreenSeal_plus.recordingOpenAction"
     private static let previewBundleIdentifier = "com.apple.Preview"
     private static let quickTimeBundleIdentifier = "com.apple.QuickTimePlayerX"
     private static let screenshotPreviewDurationNanoseconds: UInt64 = 10_000_000_000

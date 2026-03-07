@@ -251,13 +251,13 @@ final class ScreenshotService {
     private func makeOutputURL() throws -> URL {
         let pictures = FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Pictures", isDirectory: true)
-        let directory = pictures.appendingPathComponent("ScreenSeal", isDirectory: true)
+        let directory = pictures.appendingPathComponent("ScreenSeal_plus", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd-HHmmss"
         let timestamp = formatter.string(from: Date())
-        return directory.appendingPathComponent("ScreenSeal-\(timestamp).png")
+        return directory.appendingPathComponent("ScreenSeal_plus-\(timestamp).png")
     }
 
     @MainActor

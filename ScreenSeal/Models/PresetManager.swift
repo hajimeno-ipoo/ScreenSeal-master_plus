@@ -24,7 +24,7 @@ struct LayoutPreset: Codable, Identifiable {
 final class PresetManager: ObservableObject {
     @Published private(set) var presets: [LayoutPreset] = []
 
-    private static let storageKey = "ScreenSeal.presets"
+    private static let storageKey = "ScreenSeal_plus.presets"
 
     init() {
         load()

@@ -50,7 +50,7 @@
 		B10000019 /* ZoomProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZoomProfile.swift; sourceTree = "<group>"; };
 		B10000020 /* PointerTrackingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PointerTrackingService.swift; sourceTree = "<group>"; };
 		B10000021 /* RecordingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingService.swift; sourceTree = "<group>"; };
-		C10000001 /* ScreenSeal.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ScreenSeal.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C10000001 /* ScreenSeal_plus.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ScreenSeal_plus.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -151,7 +151,7 @@
 		E10000009 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				C10000001 /* ScreenSeal.app */,
+				C10000001 /* ScreenSeal_plus.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -188,8 +188,8 @@
 			dependencies = (
 			);
 			name = ScreenSeal;
-			productName = ScreenSeal;
-			productReference = C10000001 /* ScreenSeal.app */;
+			productName = ScreenSeal_plus;
+			productReference = C10000001 /* ScreenSeal_plus.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -324,7 +324,7 @@
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.screenseal.app;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = ScreenSeal_plus;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 			};
@@ -349,7 +349,7 @@
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.screenseal.app;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = ScreenSeal_plus;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 			};

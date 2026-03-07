@@ -23,8 +23,8 @@ final class OverlayConfiguration: ObservableObject {
 
     // MARK: - Persistence
 
-    private static let typeKey = "ScreenSeal.lastMosaicType"
-    private static let intensityKey = "ScreenSeal.lastIntensity"
+    private static let typeKey = "ScreenSeal_plus.lastMosaicType"
+    private static let intensityKey = "ScreenSeal_plus.lastIntensity"
 
     private static func saveDefaults(type: MosaicType, intensity: Double) {
         UserDefaults.standard.set(type.rawValue, forKey: typeKey)
