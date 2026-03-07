@@ -1,0 +1,26 @@
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Xcode user data
+*.xcuserstate
+xcuserdata/
+**/xcuserdata/
+
+# Build artifacts
+build/
+DerivedData/
+*.dSYM
+*.xcactivitylog
+
+# Release artifacts
+*.zip
+
+# Tool local data
+.serena/
+.codex-debug-frames/
+.codex-debug-frames-*/
+
+# Optional local env files
+.env
+.env.*
