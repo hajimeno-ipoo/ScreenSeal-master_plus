@@ -871,6 +871,7 @@ final class WindowManager: ObservableObject {
     private var isStopping = false
     private var nextIndex = 1
     private var wakeObserver: Any?
+    private var appActivationObserver: Any?
     private let colorPanelCoordinator = ColorPanelCoordinator()
     private let regionSelectionCoordinator = RegionSelectionCoordinator()
     private let windowSelectionPickerCoordinator = WindowSelectionPickerCoordinator()
@@ -880,6 +881,7 @@ final class WindowManager: ObservableObject {
     private var screenshotPreviewDismissTask: Task<Void, Never>?
     private var screenshotPreviewWindow: ScreenshotPreviewWindow?
     private var lastResolvedRecordingTarget: ResolvedRecordingTarget?
+    private var lastExternalFrontmostApp: NSRunningApplication?
 
     private var recordingServiceRef: AnyObject?
 
@@ -959,6 +961,18 @@ final class WindowManager: ObservableObject {
         ) { [weak self] _ in
             self?.handleWake()
         }
+        appActivationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self,
+                  let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  app.processIdentifier != ProcessInfo.processInfo.processIdentifier else {
+                return
+            }
+            self.lastExternalFrontmostApp = app
+        }
         windowSelectionPickerCoordinator.windowManager = self
 
     }
@@ -971,6 +985,9 @@ final class WindowManager: ObservableObject {
         dismissScreenshotPreview()
         regionSelectionCoordinator.dismiss()
         if let observer = wakeObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
+        }
+        if let observer = appActivationObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(observer)
         }
     }
@@ -1296,6 +1313,7 @@ final class WindowManager: ObservableObject {
                 self.countdownTask = nil
                 self.dismissCountdownOverlay()
                 self.recordingState = .starting
+                self.restoreLastExternalFrontmostApp()
                 self.startRecordingNow(target: target)
             }
         }
@@ -1380,6 +1398,14 @@ final class WindowManager: ObservableObject {
         countdownOverlayWindow?.orderOut(nil)
         countdownOverlayWindow?.close()
         countdownOverlayWindow = nil
+    }
+
+    private func restoreLastExternalFrontmostApp() {
+        guard let app = lastExternalFrontmostApp,
+              app.processIdentifier != ProcessInfo.processInfo.processIdentifier else {
+            return
+        }
+        app.activate(options: [.activateIgnoringOtherApps])
     }
 
     private func showRegionRecordingOverlay(for selection: RecordingRegionSelection, editable: Bool) {
