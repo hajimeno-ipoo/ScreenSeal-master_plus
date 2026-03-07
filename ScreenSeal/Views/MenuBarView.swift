@@ -202,6 +202,17 @@ struct MenuBarView: View {
         }
         .disabled(windowManager.isRecordingPreparationActive)
 
+        Menu("Zoom Magnification") {
+            ForEach(RecordingZoomScale.allCases, id: \.self) { scale in
+                Button {
+                    windowManager.recordingZoomScale = scale
+                } label: {
+                    selectionMenuLabel(scale.menuTitle, selected: windowManager.recordingZoomScale == scale)
+                }
+            }
+        }
+        .disabled(windowManager.recordingOptionsDisabled)
+
         Toggle("Follow Cursor", isOn: $windowManager.followCursorRecording)
             .disabled(windowManager.recordingOptionsDisabled)
         Toggle("Cursor Highlight", isOn: $windowManager.cursorHighlightEnabled)

@@ -105,6 +105,18 @@ enum RecordingOpenAction: String, CaseIterable, Equatable {
     case finder = "Finder"
 }
 
+enum RecordingZoomScale: Double, CaseIterable, Equatable {
+    case x1_2 = 1.2
+    case x1_5 = 1.5
+    case x1_8 = 1.8
+    case x2_0 = 2.0
+    case x2_5 = 2.5
+
+    var menuTitle: String {
+        String(format: "%.1fx", rawValue)
+    }
+}
+
 struct RecordingWindowOption: Identifiable, Equatable {
     let windowID: CGWindowID
     let appName: String
@@ -812,6 +824,7 @@ final class WindowManager: ObservableObject {
     private static let clickRingColorKey = "ScreenSeal_plus.clickRingColor"
     private static let screenshotOpenActionKey = "ScreenSeal_plus.screenshotOpenAction"
     private static let recordingOpenActionKey = "ScreenSeal_plus.recordingOpenAction"
+    private static let recordingZoomScaleKey = "ScreenSeal_plus.recordingZoomScale"
     private static let previewBundleIdentifier = "com.apple.Preview"
     private static let quickTimeBundleIdentifier = "com.apple.QuickTimePlayerX"
     private static let screenshotPreviewDurationNanoseconds: UInt64 = 10_000_000_000
@@ -844,6 +857,9 @@ final class WindowManager: ObservableObject {
     }
     @Published var recordingOpenAction: RecordingOpenAction {
         didSet { UserDefaults.standard.set(recordingOpenAction.rawValue, forKey: Self.recordingOpenActionKey) }
+    }
+    @Published var recordingZoomScale: RecordingZoomScale {
+        didSet { UserDefaults.standard.set(recordingZoomScale.rawValue, forKey: Self.recordingZoomScaleKey) }
     }
     @Published var recordingTarget: RecordingTarget = .display
     @Published private(set) var selectedWindowDisplayName: String?
@@ -946,6 +962,9 @@ final class WindowManager: ObservableObject {
         self.recordingOpenAction = RecordingOpenAction(
             rawValue: UserDefaults.standard.string(forKey: Self.recordingOpenActionKey) ?? ""
         ) ?? .quickTime
+        self.recordingZoomScale = RecordingZoomScale(
+            rawValue: UserDefaults.standard.double(forKey: Self.recordingZoomScaleKey)
+        ) ?? .x1_8
         self.cursorHighlightColor = Self.loadColor(
             forKey: Self.cursorHighlightColorKey,
             fallback: Self.defaultCursorHighlightColor
@@ -1326,6 +1345,7 @@ final class WindowManager: ObservableObject {
                 followCursorCameraEnabled: followCursorRecording,
                 cursorHighlightEnabled: cursorHighlightEnabled,
                 clickRingEnabled: clickRingEnabled,
+                zoomScale: recordingZoomScale.rawValue,
                 cursorHighlightColor: cursorHighlightColor,
                 clickRingColor: clickRingColor
             )
@@ -1405,7 +1425,7 @@ final class WindowManager: ObservableObject {
               app.processIdentifier != ProcessInfo.processInfo.processIdentifier else {
             return
         }
-        app.activate(options: [.activateIgnoringOtherApps])
+        NSApp.yieldActivation(to: app)
     }
 
     private func showRegionRecordingOverlay(for selection: RecordingRegionSelection, editable: Bool) {

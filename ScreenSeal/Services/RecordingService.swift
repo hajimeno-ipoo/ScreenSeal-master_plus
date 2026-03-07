@@ -50,8 +50,8 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
     private let mediaQueue = DispatchQueue(label: "com.screenseal.recording.media", qos: .userInitiated)
     private let ciContext = CIContext()
     private let pointerTrackingService = PointerTrackingService(fps: ZoomProfile.standard.fps)
-    private let zoomProfile = ZoomProfile.standard
-    private var currentZoomScale: CGFloat = ZoomProfile.standard.zoomOutScale
+    private let zoomProfile: ZoomProfile
+    private var currentZoomScale: CGFloat
     private var currentZoomCenter: CGPoint?
     private var lastZoomUpdateTimestamp: CFTimeInterval = CACurrentMediaTime()
     private var lastHandledClickEventID: UInt64 = 0
@@ -70,12 +70,22 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         followCursorCameraEnabled: Bool = true,
         cursorHighlightEnabled: Bool = true,
         clickRingEnabled: Bool = true,
+        zoomScale: Double = Double(ZoomProfile.standard.zoomInScale),
         cursorHighlightColor: CGColor = RecordingService.defaultHighlightColor.cgColor,
         clickRingColor: CGColor = RecordingService.defaultClickRingColor.cgColor
     ) {
+        let standardZoomProfile = ZoomProfile.standard
         self.followCursorCameraEnabled = followCursorCameraEnabled
         self.cursorHighlightEnabled = cursorHighlightEnabled
         self.clickRingEnabled = clickRingEnabled
+        self.zoomProfile = ZoomProfile(
+            zoomInScale: CGFloat(zoomScale),
+            zoomOutScale: standardZoomProfile.zoomOutScale,
+            easingDuration: standardZoomProfile.easingDuration,
+            cursorFollowDuration: standardZoomProfile.cursorFollowDuration,
+            fps: standardZoomProfile.fps
+        )
+        self.currentZoomScale = standardZoomProfile.zoomOutScale
         self.highlightColor = Self.normalizedColor(
             from: cursorHighlightColor,
             fallback: Self.defaultHighlightColor
@@ -84,6 +94,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             from: clickRingColor,
             fallback: Self.defaultClickRingColor
         )
+        super.init()
     }
 
     func start(
