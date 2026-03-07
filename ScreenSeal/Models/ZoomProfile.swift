@@ -11,8 +11,8 @@ struct ZoomProfile {
     static let standard = ZoomProfile(
         zoomInScale: 1.8,
         zoomOutScale: 1.0,
-        easingDuration: 0.18,
-        cursorFollowDuration: 0.12,
-        fps: 30
+        easingDuration: 0.22,
+        cursorFollowDuration: 0.16,
+        fps: 60
     )
 }

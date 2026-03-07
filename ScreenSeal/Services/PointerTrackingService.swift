@@ -32,7 +32,7 @@ final class PointerTrackingService {
     private var lastClickLocation: CGPoint?
     private var previousPrimaryButtonPressed = false
     private var zoomReleaseDeadline: CFTimeInterval = 0
-    private let zoomReleaseDelay: CFTimeInterval = 0.9
+    private let zoomReleaseDelay: CFTimeInterval = 0.5
 
     init(fps: Int = ZoomProfile.standard.fps) {
         self.fps = max(1, fps)
