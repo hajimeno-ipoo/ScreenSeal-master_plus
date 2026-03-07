@@ -551,6 +551,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             elapsed: elapsed,
             duration: zoomProfile.easingDuration
         )
+        let blendProgress = zoomBlendProgress(for: currentZoomScale)
 
         if shouldZoom {
             let initialCenter = currentZoomCenter ?? pointer.zoomAnchorLocation.map {
@@ -564,7 +565,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             )
         }
 
-        guard currentZoomScale > zoomProfile.zoomOutScale + 0.001 || shouldZoom else {
+        guard blendProgress > 0.001 || shouldZoom else {
             currentZoomCenter = nil
             let cursor = outputCursorPoint(for: targetLocation, imageExtent: extent, sourceRect: extent, outputSize: outputSize)
             let clickPoint = pointer.lastClickLocation.flatMap {
@@ -580,18 +581,26 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         let clampedY = min(max(zoomCenter.y - (zoomedHeight / 2), extent.minY), extent.maxY - zoomedHeight)
         let cropRect = CGRect(x: clampedX, y: clampedY, width: zoomedWidth, height: zoomedHeight)
 
-        let translated = image
-            .cropped(to: cropRect)
-            .transformed(by: CGAffineTransform(translationX: -cropRect.origin.x, y: -cropRect.origin.y))
-        let scaled = translated.transformed(by: CGAffineTransform(
-            scaleX: outputSize.width / cropRect.width,
-            y: outputSize.height / cropRect.height
-        ))
-        let cursor = outputCursorPoint(for: targetLocation, imageExtent: extent, sourceRect: cropRect, outputSize: outputSize)
-        let clickPoint = pointer.lastClickLocation.flatMap {
+        let zoomedImage = renderedImage(image, from: cropRect, outputSize: outputSize)
+        let baseCursor = outputCursorPoint(for: targetLocation, imageExtent: extent, sourceRect: extent, outputSize: outputSize)
+        let zoomCursor = outputCursorPoint(for: targetLocation, imageExtent: extent, sourceRect: cropRect, outputSize: outputSize)
+        let baseClickPoint = pointer.lastClickLocation.flatMap {
+            outputCursorPoint(for: $0, imageExtent: extent, sourceRect: extent, outputSize: outputSize)
+        }
+        let zoomClickPoint = pointer.lastClickLocation.flatMap {
             outputCursorPoint(for: $0, imageExtent: extent, sourceRect: cropRect, outputSize: outputSize)
         }
-        return (scaled.cropped(to: CGRect(origin: .zero, size: outputSize)), cursor, clickPoint, cropRect, extent)
+
+        guard blendProgress < 0.999 else {
+            return (zoomedImage, zoomCursor, zoomClickPoint, cropRect, extent)
+        }
+
+        let baseImage = renderedImage(image, from: extent, outputSize: outputSize)
+        let blendedImage = imageByApplyingAlpha(zoomedImage, alpha: blendProgress)
+            .composited(over: baseImage)
+        let cursor = blendedPoint(from: baseCursor, to: zoomCursor, progress: blendProgress)
+        let clickPoint = blendedPoint(from: baseClickPoint, to: zoomClickPoint, progress: blendProgress)
+        return (blendedImage, cursor, clickPoint, cropRect, extent)
     }
 
     private func applyFollowCursorCamera(to image: CIImage, outputSize: CGSize, pointer: PointerSnapshot) -> TransformResult {
@@ -615,6 +624,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             elapsed: elapsed,
             duration: zoomProfile.easingDuration
         )
+        let blendProgress = zoomBlendProgress(for: currentZoomScale)
 
         let cursorPoint = convertScreenPointToImagePoint(targetLocation, imageExtent: extent)
         let initialCenter = currentZoomCenter ?? pointer.zoomAnchorLocation.map {
@@ -662,20 +672,38 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         let cropRect = CGRect(x: clampedX, y: clampedY, width: zoomedWidth, height: zoomedHeight)
             .intersection(extent)
 
-        let translated = image
-            .cropped(to: cropRect)
-            .transformed(by: CGAffineTransform(translationX: -cropRect.origin.x, y: -cropRect.origin.y))
-
-        let scaleTransform = CGAffineTransform(
-            scaleX: outputSize.width / cropRect.width,
-            y: outputSize.height / cropRect.height
-        )
-        let scaled = translated.transformed(by: scaleTransform)
-        let cursor = outputCursorPoint(for: targetLocation, imageExtent: extent, sourceRect: cropRect, outputSize: outputSize)
-        let clickPoint = pointer.lastClickLocation.flatMap {
+        let zoomedImage = renderedImage(image, from: cropRect, outputSize: outputSize)
+        let zoomCursor = outputCursorPoint(for: targetLocation, imageExtent: extent, sourceRect: cropRect, outputSize: outputSize)
+        let zoomClickPoint = pointer.lastClickLocation.flatMap {
             outputCursorPoint(for: $0, imageExtent: extent, sourceRect: cropRect, outputSize: outputSize)
         }
-        return (scaled.cropped(to: CGRect(origin: .zero, size: outputSize)), cursor, clickPoint, cropRect, extent)
+
+        guard blendProgress < 0.999 else {
+            return (zoomedImage, zoomCursor, zoomClickPoint, cropRect, extent)
+        }
+
+        let idleEffectiveScale = max(0.01, zoomProfile.zoomOutScale * idleCameraScale)
+        let idleWidth = min(baseCropSize.width / idleEffectiveScale, extent.width)
+        let idleHeight = min(baseCropSize.height / idleEffectiveScale, extent.height)
+        let idleCenterX = idleWidth >= extent.width ? extent.midX : zoomCenter.x
+        let idleCenterY = idleHeight >= extent.height ? extent.midY : zoomCenter.y
+        let idleRect = CGRect(
+            x: min(max(idleCenterX - (idleWidth / 2), extent.minX), extent.maxX - idleWidth),
+            y: min(max(idleCenterY - (idleHeight / 2), extent.minY), extent.maxY - idleHeight),
+            width: idleWidth,
+            height: idleHeight
+        ).intersection(extent)
+
+        let baseImage = renderedImage(image, from: idleRect, outputSize: outputSize)
+        let baseCursor = outputCursorPoint(for: targetLocation, imageExtent: extent, sourceRect: idleRect, outputSize: outputSize)
+        let baseClickPoint = pointer.lastClickLocation.flatMap {
+            outputCursorPoint(for: $0, imageExtent: extent, sourceRect: idleRect, outputSize: outputSize)
+        }
+        let blendedImage = imageByApplyingAlpha(zoomedImage, alpha: blendProgress)
+            .composited(over: baseImage)
+        let cursor = blendedPoint(from: baseCursor, to: zoomCursor, progress: blendProgress)
+        let clickPoint = blendedPoint(from: baseClickPoint, to: zoomClickPoint, progress: blendProgress)
+        return (blendedImage, cursor, clickPoint, cropRect, extent)
     }
 
     private func applyCursorEffects(
@@ -730,7 +758,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             output = highlight.composited(over: output)
         }
 
-        let resolvedClickPoint = lastClickScreenLocation.flatMap {
+        let resolvedClickPoint = clickPoint ?? lastClickScreenLocation.flatMap {
             outputCursorPoint(
                 for: $0,
                 imageExtent: imageExtent,
@@ -925,6 +953,54 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             x: smoothValue(current.x, toward: target.x, elapsed: elapsed, duration: duration),
             y: smoothValue(current.y, toward: target.y, elapsed: elapsed, duration: duration)
         )
+    }
+
+    private func zoomBlendProgress(for scale: CGFloat) -> CGFloat {
+        let range = max(0.001, zoomProfile.zoomInScale - zoomProfile.zoomOutScale)
+        return min(max((scale - zoomProfile.zoomOutScale) / range, 0), 1)
+    }
+
+    private func renderedImage(_ image: CIImage, from sourceRect: CGRect, outputSize: CGSize) -> CIImage {
+        let translated = image
+            .cropped(to: sourceRect)
+            .transformed(by: CGAffineTransform(translationX: -sourceRect.origin.x, y: -sourceRect.origin.y))
+        let scaled = translated.transformed(by: CGAffineTransform(
+            scaleX: outputSize.width / sourceRect.width,
+            y: outputSize.height / sourceRect.height
+        ))
+        return scaled.cropped(to: CGRect(origin: .zero, size: outputSize))
+    }
+
+    private func imageByApplyingAlpha(_ image: CIImage, alpha: CGFloat) -> CIImage {
+        let clampedAlpha = min(max(alpha, 0), 1)
+        guard clampedAlpha < 0.999 else { return image }
+        let filter = CIFilter(
+            name: "CIColorMatrix",
+            parameters: [
+                kCIInputImageKey: image,
+                "inputRVector": CIVector(x: 1, y: 0, z: 0, w: 0),
+                "inputGVector": CIVector(x: 0, y: 1, z: 0, w: 0),
+                "inputBVector": CIVector(x: 0, y: 0, z: 1, w: 0),
+                "inputAVector": CIVector(x: 0, y: 0, z: 0, w: clampedAlpha)
+            ]
+        )
+        return filter?.outputImage ?? image
+    }
+
+    private func blendedPoint(from start: CGPoint?, to end: CGPoint?, progress: CGFloat) -> CGPoint? {
+        switch (start, end) {
+        case let (.some(start), .some(end)):
+            return CGPoint(
+                x: start.x + ((end.x - start.x) * progress),
+                y: start.y + ((end.y - start.y) * progress)
+            )
+        case let (.some(start), .none):
+            return start
+        case let (.none, .some(end)):
+            return end
+        case (.none, .none):
+            return nil
+        }
     }
 
     private func makeWriter(
