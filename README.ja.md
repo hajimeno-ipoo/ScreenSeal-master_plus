@@ -66,3 +66,8 @@ ditto -c -k --sequesterRsrc --keepParent build/Build/Products/Release/ScreenSeal
 ## License
 
 MIT
+
+## 元の作者
+
+- X のポスト: [https://x.com/nya3_neko2/status/2022893455069057329?s=20](https://x.com/nya3_neko2/status/2022893455069057329?s=20)
+- GitHub リポジトリ: [https://github.com/nyanko3141592/ScreenSeal.git](https://github.com/nyanko3141592/ScreenSeal.git)
