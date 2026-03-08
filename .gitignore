@@ -9,6 +9,7 @@ xcuserdata/
 
 # Build artifacts
 build/
+/build-release/
 DerivedData/
 *.dSYM
 *.xcactivitylog
