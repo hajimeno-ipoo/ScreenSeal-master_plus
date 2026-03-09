@@ -64,6 +64,8 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
     private var lastClickScreenLocation: CGPoint?
     private var clickRingStampCacheKey: ClickRingStampKey?
     private var clickRingStampCacheImage: CIImage?
+    private var cursorOverlayCacheKey: CursorOverlayCacheKey?
+    private var cursorOverlayCacheImage: CIImage?
     private var isFinalizing = false
     private var remainingWindowDebugLogs = 0
     private let audioVideoLeadToleranceFrames: Int64 = 3
@@ -76,6 +78,14 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         let green: Int
         let blue: Int
         let alpha: Int
+    }
+
+    private struct CursorOverlayCacheKey: Equatable {
+        let cursorIdentifier: ObjectIdentifier
+        let pixelWidth: Int
+        let pixelHeight: Int
+        let hotSpotX: Int
+        let hotSpotY: Int
     }
 
     private(set) var state: RecordingState = .idle {
@@ -139,7 +149,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             config.pixelFormat = kCVPixelFormatType_32BGRA
             config.minimumFrameInterval = CMTime(value: 1, timescale: Int32(max(1, zoomProfile.fps)))
             config.queueDepth = 5
-            config.showsCursor = true
+            config.showsCursor = false
             config.capturesAudio = true
             config.excludesCurrentProcessAudio = false
             config.captureMicrophone = false
@@ -279,6 +289,8 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             self.lastClickReleaseTimestamp = nil
             self.lastClickScreenLocation = nil
             self.lastLivePreviewTimestamp = -.greatestFiniteMagnitude
+            self.cursorOverlayCacheKey = nil
+            self.cursorOverlayCacheImage = nil
 
             await MainActor.run {
                 pointerTrackingService.start()
@@ -477,9 +489,14 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             imageExtent: transformed.imageExtent,
             now: effectTime
         )
+        let compositedImage = applyCursorOverlay(
+            to: effectedImage,
+            cursorPoint: transformed.cursorPoint,
+            outputSize: outputSize
+        )
         let renderBounds = CGRect(origin: .zero, size: outputSize)
-        ciContext.render(effectedImage, to: outputPixelBuffer, bounds: renderBounds, colorSpace: CGColorSpaceCreateDeviceRGB())
-        emitLivePreviewFrameIfNeeded(image: effectedImage, bounds: renderBounds, sampleTime: sampleTime)
+        ciContext.render(compositedImage, to: outputPixelBuffer, bounds: renderBounds, colorSpace: CGColorSpaceCreateDeviceRGB())
+        emitLivePreviewFrameIfNeeded(image: compositedImage, bounds: renderBounds, sampleTime: sampleTime)
 
         guard pixelBufferAdaptor.append(outputPixelBuffer, withPresentationTime: presentationTime) else {
             return false
@@ -929,6 +946,84 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         return translated.cropped(to: CGRect(origin: .zero, size: outputSize))
     }
 
+    private func applyCursorOverlay(
+        to image: CIImage,
+        cursorPoint: CGPoint?,
+        outputSize: CGSize
+    ) -> CIImage {
+        guard let cursorPoint,
+              let overlay = currentCursorOverlay()
+        else { return image }
+
+        let translated = overlay.image.transformed(
+            by: CGAffineTransform(
+                translationX: cursorPoint.x - overlay.hotSpot.x,
+                y: cursorPoint.y - (overlay.pixelSize.height - overlay.hotSpot.y)
+            )
+        )
+        let clipped = translated.cropped(to: CGRect(origin: .zero, size: outputSize))
+        return clipped.composited(over: image)
+    }
+
+    private func currentCursorOverlay() -> (image: CIImage, hotSpot: CGPoint, pixelSize: CGSize)? {
+        for cursor in cursorCandidatesForOverlay() {
+            if let overlay = cursorOverlayImage(for: cursor) {
+                return overlay
+            }
+        }
+        return nil
+    }
+
+    private func cursorCandidatesForOverlay() -> [NSCursor] {
+        var candidates: [NSCursor] = []
+        if let systemCursor = currentSystemCursorForOverlay() {
+            candidates.append(systemCursor)
+        }
+        let appCursor = NSCursor.current
+        if !candidates.contains(where: { $0 === appCursor }) {
+            candidates.append(appCursor)
+        }
+        let arrowCursor = NSCursor.arrow
+        if !candidates.contains(where: { $0 === arrowCursor }) {
+            candidates.append(arrowCursor)
+        }
+        return candidates
+    }
+
+    private func currentSystemCursorForOverlay() -> NSCursor? {
+        let selector = NSSelectorFromString("currentSystemCursor")
+        guard NSCursor.responds(to: selector),
+              let unmanaged = NSCursor.perform(selector)
+        else { return nil }
+        return unmanaged.takeUnretainedValue() as? NSCursor
+    }
+
+    private func cursorOverlayImage(for cursor: NSCursor) -> (image: CIImage, hotSpot: CGPoint, pixelSize: CGSize)? {
+        let nsImage = cursor.image
+        var proposedRect = CGRect(origin: .zero, size: nsImage.size)
+        guard let cgImage = nsImage.cgImage(forProposedRect: &proposedRect, context: nil, hints: nil) else {
+            return nil
+        }
+
+        let hotSpot = cursor.hotSpot
+        let key = CursorOverlayCacheKey(
+            cursorIdentifier: ObjectIdentifier(cursor),
+            pixelWidth: cgImage.width,
+            pixelHeight: cgImage.height,
+            hotSpotX: Int((hotSpot.x * 1000).rounded()),
+            hotSpotY: Int((hotSpot.y * 1000).rounded())
+        )
+        if key == cursorOverlayCacheKey, let cached = cursorOverlayCacheImage {
+            return (cached, hotSpot, CGSize(width: cgImage.width, height: cgImage.height))
+        }
+
+        let imageRect = CGRect(x: 0, y: 0, width: cgImage.width, height: cgImage.height)
+        let ciImage = CIImage(cgImage: cgImage).cropped(to: imageRect)
+        cursorOverlayCacheKey = key
+        cursorOverlayCacheImage = ciImage
+        return (ciImage, hotSpot, CGSize(width: cgImage.width, height: cgImage.height))
+    }
+
     private func clickRingStampImage(progress: CGFloat) -> CIImage? {
         let fade = max(0.45, 1 - progress)
         let radius = clickRingBaseRadius + ((clickRingMaxRadius - clickRingBaseRadius) * progress)
@@ -1279,6 +1374,8 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         lastClickScreenLocation = nil
         clickRingStampCacheKey = nil
         clickRingStampCacheImage = nil
+        cursorOverlayCacheKey = nil
+        cursorOverlayCacheImage = nil
         isFinalizing = false
         lastLivePreviewTimestamp = -.greatestFiniteMagnitude
         onPreviewFrame = nil
