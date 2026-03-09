@@ -24,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let recordingControlItem {
             NSStatusBar.system.removeStatusItem(recordingControlItem)
         }
+        windowManager.stopScrollCapture()
         windowManager.cancelRecordingCountdown()
         windowManager.stopRecording()
         windowManager.removeAllWindows()
@@ -53,7 +54,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 configuration = ("stop.circle.fill", "Stop Recording", .systemRed)
             }
         case .screenshot:
-            configuration = ("camera.circle", "Take Screenshot", nil)
+            if windowManager.isScrollCaptureRunning {
+                configuration = ("stop.circle.fill", "Stop Scroll Capture", .systemRed)
+            } else {
+                configuration = ("camera.circle", windowManager.screenshotActionTitle, nil)
+            }
         }
 
         button.image = NSImage(systemSymbolName: configuration.symbol, accessibilityDescription: configuration.description)

@@ -122,11 +122,11 @@ struct MenuBarView: View {
                 .keyboardShortcut("r")
             }
         } else {
-            Button("Take Screenshot") {
+            Button(windowManager.screenshotActionTitle) {
                 windowManager.performPrimaryCaptureAction()
             }
             .keyboardShortcut("r")
-            .disabled(windowManager.isTakingScreenshot)
+            .disabled(windowManager.isScreenshotActionDisabled)
         }
 
         Menu("Capture Mode") {
@@ -144,12 +144,30 @@ struct MenuBarView: View {
         }
         .disabled(windowManager.isCaptureModeSelectionDisabled)
 
+        if windowManager.captureMode == .screenshot {
+            Menu("Screenshot Type") {
+                Button {
+                    windowManager.screenshotCaptureType = .single
+                } label: {
+                    selectionMenuLabel("Single Screenshot", selected: windowManager.screenshotCaptureType == .single)
+                }
+
+                Button {
+                    windowManager.screenshotCaptureType = .scroll
+                } label: {
+                    selectionMenuLabel("Scroll Capture", selected: windowManager.screenshotCaptureType == .scroll)
+                }
+            }
+            .disabled(windowManager.isTakingScreenshot)
+        }
+
         Menu("Capture Target") {
             Button {
                 windowManager.selectDisplayRecordingTarget()
             } label: {
                 selectionMenuLabel("Full Display", selected: windowManager.recordingTarget == .display)
             }
+            .disabled(windowManager.isFullDisplayTargetDisabled)
 
             Button("Choose Window...") {
                 windowManager.beginSystemWindowSelection()

@@ -100,6 +100,11 @@ enum ScreenshotOpenAction: String, CaseIterable, Equatable {
     case finder = "Finder"
 }
 
+enum ScreenshotCaptureType: String, CaseIterable, Equatable {
+    case single = "Single Screenshot"
+    case scroll = "Scroll Capture"
+}
+
 enum RecordingOpenAction: String, CaseIterable, Equatable {
     case quickTime = "QuickTime"
     case finder = "Finder"
@@ -1266,6 +1271,8 @@ final class WindowManager: ObservableObject {
     @Published private(set) var screenshotStatusMessage: String?
     @Published private(set) var screenshotStatusIsFailure = false
     @Published private(set) var isTakingScreenshot = false
+    @Published var screenshotCaptureType: ScreenshotCaptureType = .single
+    @Published private(set) var isScrollCaptureRunning = false
     @Published var screenshotOpenAction: ScreenshotOpenAction {
         didSet { UserDefaults.standard.set(screenshotOpenAction.rawValue, forKey: Self.screenshotOpenActionKey) }
     }
@@ -1318,11 +1325,13 @@ final class WindowManager: ObservableObject {
     private var regionRecordingOverlayWindow: RegionRecordingOverlayWindow?
     private var screenshotPreviewDismissTask: Task<Void, Never>?
     private var screenshotPreviewWindow: ScreenshotPreviewWindow?
+    private var scrollCaptureTask: Task<Void, Never>?
     private var recordingLivePreviewWindow: RecordingLivePreviewWindow?
     private var lastResolvedRecordingTarget: ResolvedRecordingTarget?
     private var lastExternalFrontmostApp: NSRunningApplication?
     private var livePreviewPinned: Bool
     private var livePreviewSavedFrame: CGRect?
+    private var scrollCaptureStopRequested = false
 
     private var recordingServiceRef: AnyObject?
 
@@ -1363,6 +1372,23 @@ final class WindowManager: ObservableObject {
 
     var shouldDisableNonDisplayTargets: Bool {
         captureMode == .record && followCursorRecording
+    }
+
+    var isFullDisplayTargetDisabled: Bool {
+        isCaptureModeSelectionDisabled
+            || (captureMode == .screenshot && screenshotCaptureType == .scroll)
+    }
+
+    var isScreenshotActionDisabled: Bool {
+        guard captureMode == .screenshot else { return false }
+        if isScrollCaptureRunning { return false }
+        if isTakingScreenshot { return true }
+        if screenshotCaptureType == .scroll, recordingTarget == .display { return true }
+        return false
+    }
+
+    var screenshotActionTitle: String {
+        isScrollCaptureRunning ? "Stop Scroll Capture" : "Take Screenshot"
     }
 
     var statusText: String? {
@@ -1438,6 +1464,7 @@ final class WindowManager: ObservableObject {
 
     deinit {
         countdownTask?.cancel()
+        scrollCaptureTask?.cancel()
         screenshotPreviewDismissTask?.cancel()
         dismissCountdownOverlay()
         dismissRegionRecordingOverlay()
@@ -1502,7 +1529,16 @@ final class WindowManager: ObservableObject {
                 startRecording()
             }
         case .screenshot:
-            takeScreenshot()
+            switch screenshotCaptureType {
+            case .single:
+                takeScreenshot()
+            case .scroll:
+                if isScrollCaptureRunning {
+                    stopScrollCapture()
+                } else {
+                    startScrollCapture()
+                }
+            }
         }
     }
 
@@ -1576,6 +1612,82 @@ final class WindowManager: ObservableObject {
             } catch {
                 await MainActor.run {
                     self.isTakingScreenshot = false
+                    self.screenshotStatusIsFailure = true
+                    self.screenshotStatusMessage = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    func stopScrollCapture() {
+        guard isScrollCaptureRunning else { return }
+        scrollCaptureStopRequested = true
+        screenshotStatusIsFailure = false
+        screenshotStatusMessage = "Scroll Capture: stopping..."
+    }
+
+    private func startScrollCapture() {
+        if isRecordingPreparationActive || isTakingScreenshot { return }
+        guard recordingTarget != .display else {
+            screenshotStatusIsFailure = true
+            screenshotStatusMessage = "Scroll Capture requires Window or Region."
+            return
+        }
+
+        clearScreenshotStatus()
+        dismissScreenshotPreview()
+        isTakingScreenshot = true
+        isScrollCaptureRunning = true
+        scrollCaptureStopRequested = false
+        screenshotStatusMessage = "Scroll Capture: preparing..."
+
+        scrollCaptureTask = Task { [weak self] in
+            guard let self else { return }
+            defer {
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.isTakingScreenshot = false
+                    self.isScrollCaptureRunning = false
+                    self.scrollCaptureTask = nil
+                }
+            }
+
+            do {
+                let target = try await self.resolveRecordingTarget()
+                guard case .display = target else {
+                    let service = ScrollCaptureService()
+                    let shareableContent = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
+                    let filterContext = await MainActor.run {
+                        (
+                            excludedApplications: self.excludedCurrentApplications(from: shareableContent),
+                            exceptingWindows: self.includedOverlayShareableWindows(from: shareableContent),
+                            includedOverlayWindowIDs: self.includedRecordingOverlayWindowIDs()
+                        )
+                    }
+                    let result = try await service.capture(
+                        target: target,
+                        excludedApplications: filterContext.excludedApplications,
+                        exceptingWindows: filterContext.exceptingWindows,
+                        overlayWindowIDs: Array(filterContext.includedOverlayWindowIDs),
+                        stopRequested: { [weak self] in
+                            self?.scrollCaptureStopRequested ?? true
+                        }
+                    )
+                    await MainActor.run {
+                        self.scrollCaptureStopRequested = false
+                        self.screenshotStatusIsFailure = false
+                        self.screenshotStatusMessage = "Scroll Capture saved: \(result.outputURL.lastPathComponent)"
+                        self.openScreenshot(at: result.outputURL)
+                    }
+                    return
+                }
+                await MainActor.run {
+                    self.screenshotStatusIsFailure = true
+                    self.screenshotStatusMessage = "Scroll Capture requires Window or Region."
+                }
+            } catch {
+                await MainActor.run {
+                    self.scrollCaptureStopRequested = false
                     self.screenshotStatusIsFailure = true
                     self.screenshotStatusMessage = error.localizedDescription
                 }
@@ -2129,6 +2241,10 @@ final class WindowManager: ObservableObject {
         case .finder:
             NSWorkspace.shared.activateFileViewerSelecting([url])
         case .preview:
+            if url.pathExtension.lowercased() == "zip" {
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+                return
+            }
             let configuration = NSWorkspace.OpenConfiguration()
             guard let applicationURL = preferredApplicationURL(
                 bundleIdentifier: Self.previewBundleIdentifier,
