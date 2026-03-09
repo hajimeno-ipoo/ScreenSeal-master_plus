@@ -39,6 +39,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
     private let clickRingSpacing: CGFloat = 30
     private let clickRingLineWidth: CGFloat = 6
     private let clickRingColor: NSColor
+    private var livePreviewEnabled: Bool
     private var activeTarget: ResolvedRecordingTarget?
     private var stream: SCStream?
     private var writer: AVAssetWriter?
@@ -65,6 +66,8 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
     private var isFinalizing = false
     private var remainingWindowDebugLogs = 0
     private let audioVideoLeadToleranceFrames: Int64 = 3
+    private let livePreviewFrameInterval: CFTimeInterval = 1.0 / 15.0
+    private var lastLivePreviewTimestamp: CFTimeInterval = -.greatestFiniteMagnitude
 
     private struct ClickRingStampKey: Equatable {
         let progressBucket: Int
@@ -79,11 +82,13 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
     }
 
     var onStateChange: ((RecordingState) -> Void)?
+    var onPreviewFrame: ((CGImage) -> Void)?
 
     init(
         followCursorCameraEnabled: Bool = true,
         cursorHighlightEnabled: Bool = true,
         clickRingEnabled: Bool = true,
+        livePreviewEnabled: Bool = false,
         zoomScale: Double = Double(ZoomProfile.standard.zoomInScale),
         cursorHighlightColor: CGColor = RecordingService.defaultHighlightColor.cgColor,
         clickRingColor: CGColor = RecordingService.defaultClickRingColor.cgColor
@@ -92,6 +97,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         self.followCursorCameraEnabled = followCursorCameraEnabled
         self.cursorHighlightEnabled = cursorHighlightEnabled
         self.clickRingEnabled = clickRingEnabled
+        self.livePreviewEnabled = livePreviewEnabled
         self.zoomProfile = ZoomProfile(
             zoomInScale: CGFloat(zoomScale),
             zoomOutScale: standardZoomProfile.zoomOutScale,
@@ -117,7 +123,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         target: ResolvedRecordingTarget,
         excludedApplications: [SCRunningApplication] = [],
         exceptingWindows: [SCWindow] = [],
-        overlayWindowIDs: [CGWindowID] = []
+        includedOverlayWindowIDs: [CGWindowID] = []
     ) async throws -> URL {
         guard case .idle = state else {
             throw RecordingError.invalidState
@@ -183,7 +189,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
                     width: windowFrame.width,
                     height: windowFrame.height
                 )
-                let includedWindowIDs = Set(overlayWindowIDs).union([windowID])
+                let includedWindowIDs = Set(includedOverlayWindowIDs).union([windowID])
                 let includedWindows = content.windows.filter { includedWindowIDs.contains($0.windowID) }
                 config.sourceRect = localRect
                 let windowNativeSize = CGSize(
@@ -270,6 +276,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             self.lastHandledClickEventID = 0
             self.lastClickTimestamp = nil
             self.lastClickScreenLocation = nil
+            self.lastLivePreviewTimestamp = -.greatestFiniteMagnitude
 
             await MainActor.run {
                 pointerTrackingService.start()
@@ -326,6 +333,14 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             }
             recordingLogger.error("Recording stop failed: \(error.localizedDescription)")
             throw error
+        }
+    }
+
+    func setLivePreviewEnabled(_ enabled: Bool, onPreviewFrame: ((CGImage) -> Void)?) {
+        livePreviewEnabled = enabled
+        self.onPreviewFrame = onPreviewFrame
+        if enabled {
+            lastLivePreviewTimestamp = -.greatestFiniteMagnitude
         }
     }
 
@@ -462,6 +477,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         )
         let renderBounds = CGRect(origin: .zero, size: outputSize)
         ciContext.render(effectedImage, to: outputPixelBuffer, bounds: renderBounds, colorSpace: CGColorSpaceCreateDeviceRGB())
+        emitLivePreviewFrameIfNeeded(image: effectedImage, bounds: renderBounds, sampleTime: sampleTime)
 
         guard pixelBufferAdaptor.append(outputPixelBuffer, withPresentationTime: presentationTime) else {
             return false
@@ -491,6 +507,18 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
 
         if !audioInput.append(sampleBuffer), writer.status == .failed {
             recordingLogger.error("Audio append failed: \(writer.error?.localizedDescription ?? "unknown")")
+        }
+    }
+
+    private func emitLivePreviewFrameIfNeeded(image: CIImage, bounds: CGRect, sampleTime: CFTimeInterval) {
+        guard livePreviewEnabled, let onPreviewFrame else { return }
+        guard sampleTime.isFinite else { return }
+        guard (sampleTime - lastLivePreviewTimestamp) >= livePreviewFrameInterval else { return }
+        guard let cgImage = ciContext.createCGImage(image, from: bounds) else { return }
+
+        lastLivePreviewTimestamp = sampleTime
+        DispatchQueue.main.async {
+            onPreviewFrame(cgImage)
         }
     }
 
@@ -1236,6 +1264,8 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         clickRingStampCacheKey = nil
         clickRingStampCacheImage = nil
         isFinalizing = false
+        lastLivePreviewTimestamp = -.greatestFiniteMagnitude
+        onPreviewFrame = nil
     }
 
     private func makeOutputURL() throws -> URL {

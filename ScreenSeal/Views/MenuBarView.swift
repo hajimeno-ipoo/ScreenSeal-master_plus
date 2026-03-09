@@ -215,6 +215,8 @@ struct MenuBarView: View {
 
         Toggle("Follow Cursor", isOn: $windowManager.followCursorRecording)
             .disabled(windowManager.recordingOptionsDisabled)
+        Toggle("Live Preview During Recording", isOn: $windowManager.livePreviewDuringRecording)
+            .disabled(windowManager.livePreviewToggleDisabled)
         Toggle("Cursor Highlight", isOn: $windowManager.cursorHighlightEnabled)
             .disabled(windowManager.recordingOptionsDisabled)
         Toggle("Click Ring", isOn: $windowManager.clickRingEnabled)

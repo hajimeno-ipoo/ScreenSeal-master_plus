@@ -285,6 +285,417 @@ private final class ScreenshotPreviewWindow: NSWindow {
     }
 }
 
+private final class RecordingLivePreviewView: NSView {
+    enum ResizeRegion {
+        case topLeft
+        case top
+        case topRight
+        case right
+        case bottomRight
+        case bottom
+        case bottomLeft
+        case left
+
+        var cursor: NSCursor {
+            switch self {
+            case .left, .right:
+                return .resizeLeftRight
+            case .top, .bottom:
+                return .resizeUpDown
+            case .topLeft, .topRight, .bottomLeft, .bottomRight:
+                return .crosshair
+            }
+        }
+    }
+
+    private static let resizeHitInset: CGFloat = 12
+
+    private let titleLabel = NSTextField(labelWithString: "Live Preview")
+    private let imageContainerView = NSView()
+    private let imageLayer = CALayer()
+    private let pinButton = NSButton()
+    private var isPinned = false
+    private var trackingArea: NSTrackingArea?
+
+    var onTogglePin: (() -> Void)?
+    var onResizeStart: ((ResizeRegion, CGPoint) -> Void)?
+    var onResizeChange: ((CGPoint) -> Void)?
+    var onResizeEnd: ((CGPoint) -> Void)?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.black.withAlphaComponent(0.86).cgColor
+        layer?.cornerRadius = 16
+        layer?.borderWidth = 1
+        layer?.borderColor = NSColor.white.withAlphaComponent(0.12).cgColor
+
+        titleLabel.font = .systemFont(ofSize: 12, weight: .semibold)
+        titleLabel.textColor = .white.withAlphaComponent(0.92)
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        pinButton.bezelStyle = .texturedRounded
+        pinButton.isBordered = false
+        pinButton.contentTintColor = .white
+        pinButton.target = self
+        pinButton.action = #selector(handlePinButton)
+        pinButton.translatesAutoresizingMaskIntoConstraints = false
+
+        imageContainerView.wantsLayer = true
+        imageContainerView.layer?.cornerRadius = 10
+        imageContainerView.layer?.masksToBounds = true
+        imageContainerView.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.22).cgColor
+        imageContainerView.translatesAutoresizingMaskIntoConstraints = false
+        imageContainerView.layer?.addSublayer(imageLayer)
+
+        imageLayer.contentsGravity = .resizeAspect
+        imageLayer.masksToBounds = true
+        imageLayer.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
+
+        addSubview(titleLabel)
+        addSubview(pinButton)
+        addSubview(imageContainerView)
+
+        NSLayoutConstraint.activate([
+            titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: 10),
+            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: pinButton.leadingAnchor, constant: -8),
+
+            pinButton.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
+            pinButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            pinButton.widthAnchor.constraint(equalToConstant: 20),
+            pinButton.heightAnchor.constraint(equalToConstant: 20),
+
+            imageContainerView.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
+            imageContainerView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            imageContainerView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            imageContainerView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10)
+        ])
+
+        setPinned(false)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layout() {
+        super.layout()
+        imageLayer.frame = imageContainerView.bounds
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea {
+            removeTrackingArea(trackingArea)
+        }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.activeAlways, .inVisibleRect, .mouseMoved, .mouseEnteredAndExited],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        trackingArea = area
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        updateCursor(for: convert(event.locationInWindow, from: nil))
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        updateCursor(for: convert(event.locationInWindow, from: nil))
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        NSCursor.arrow.set()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        if let region = resizeRegion(at: point), !isPinned {
+            window?.acceptsMouseMovedEvents = true
+            onResizeStart?(region, window?.convertPoint(toScreen: event.locationInWindow) ?? .zero)
+            return
+        }
+        guard !isPinned else { return }
+        window?.performDrag(with: event)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard !isPinned, let window else { return }
+        onResizeChange?(window.convertPoint(toScreen: event.locationInWindow))
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard !isPinned, let window else { return }
+        onResizeEnd?(window.convertPoint(toScreen: event.locationInWindow))
+    }
+
+    func update(image: CGImage) {
+        imageLayer.contents = image
+        if let scale = window?.screen?.backingScaleFactor {
+            imageLayer.contentsScale = scale
+        }
+    }
+
+    func setPinned(_ pinned: Bool) {
+        isPinned = pinned
+        let symbolName = pinned ? "pin.fill" : "pin"
+        if let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: "Pin Preview") {
+            pinButton.image = image
+            pinButton.title = ""
+        } else {
+            pinButton.image = nil
+            pinButton.title = pinned ? "Unpin" : "Pin"
+        }
+        pinButton.toolTip = pinned ? "Unpin live preview" : "Pin live preview"
+    }
+
+    @objc
+    private func handlePinButton() {
+        onTogglePin?()
+    }
+
+    private func resizeRegion(at point: CGPoint) -> ResizeRegion? {
+        let left = point.x <= Self.resizeHitInset
+        let right = point.x >= bounds.maxX - Self.resizeHitInset
+        let bottom = point.y <= Self.resizeHitInset
+        let top = point.y >= bounds.maxY - Self.resizeHitInset
+
+        if top && left { return .topLeft }
+        if top && right { return .topRight }
+        if bottom && left { return .bottomLeft }
+        if bottom && right { return .bottomRight }
+        if left { return .left }
+        if right { return .right }
+        if top { return .top }
+        if bottom { return .bottom }
+        return nil
+    }
+
+    private func updateCursor(for point: CGPoint) {
+        guard !isPinned, let region = resizeRegion(at: point) else {
+            NSCursor.arrow.set()
+            return
+        }
+        region.cursor.set()
+    }
+}
+
+private final class RecordingLivePreviewWindow: NSWindow {
+    private static let minimumSize = CGSize(width: 240, height: 135)
+
+    private let previewView = RecordingLivePreviewView(frame: .zero)
+    private let aspectRatioValue: CGFloat
+    private var resizeRegion: RecordingLivePreviewView.ResizeRegion?
+    private var resizeStartPoint: CGPoint?
+    private var resizeStartFrame: CGRect = .zero
+    private var observers: [Any] = []
+    private var suppressFrameChangeCallback = false
+
+    var onPinToggle: (() -> Void)?
+    var onFrameChanged: ((CGRect) -> Void)?
+
+    init(frame: NSRect, aspectRatio: CGFloat, pinned: Bool) {
+        self.aspectRatioValue = max(0.1, aspectRatio)
+        super.init(
+            contentRect: frame,
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = true
+        isReleasedWhenClosed = false
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        isMovableByWindowBackground = !pinned
+        acceptsMouseMovedEvents = true
+        contentAspectRatio = NSSize(width: aspectRatioValue * 100, height: 100)
+        contentMinSize = Self.minimumSize
+        contentView = previewView
+        setFrame(frame, display: false)
+        setPinned(pinned)
+        configureCallbacks()
+        installObservers()
+    }
+
+    deinit {
+        for observer in observers {
+            NotificationCenter.default.removeObserver(observer)
+        }
+    }
+
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+
+    func update(image: CGImage) {
+        previewView.update(image: image)
+    }
+
+    func setPinned(_ pinned: Bool) {
+        previewView.setPinned(pinned)
+        isMovableByWindowBackground = !pinned
+        level = pinned ? .statusBar : .floating
+    }
+
+    func applyPersistedFrame(_ frame: CGRect) {
+        suppressFrameChangeCallback = true
+        setFrame(frame, display: true)
+        suppressFrameChangeCallback = false
+    }
+
+    private func configureCallbacks() {
+        previewView.onTogglePin = { [weak self] in
+            self?.onPinToggle?()
+        }
+        previewView.onResizeStart = { [weak self] region, point in
+            self?.resizeRegion = region
+            self?.resizeStartPoint = point
+            self?.resizeStartFrame = self?.frame ?? .zero
+        }
+        previewView.onResizeChange = { [weak self] point in
+            self?.resize(to: point)
+        }
+        previewView.onResizeEnd = { [weak self] point in
+            self?.resize(to: point)
+            self?.resizeRegion = nil
+            self?.resizeStartPoint = nil
+            self?.resizeStartFrame = .zero
+            self?.notifyFrameChanged()
+        }
+    }
+
+    private func installObservers() {
+        let center = NotificationCenter.default
+        observers.append(center.addObserver(
+            forName: NSWindow.didMoveNotification,
+            object: self,
+            queue: .main
+        ) { [weak self] _ in
+            self?.notifyFrameChanged()
+        })
+        observers.append(center.addObserver(
+            forName: NSWindow.didResizeNotification,
+            object: self,
+            queue: .main
+        ) { [weak self] _ in
+            self?.notifyFrameChanged()
+        })
+    }
+
+    private func resize(to screenPoint: CGPoint) {
+        guard let resizeStartPoint else { return }
+        guard let resizeRegion else { return }
+        guard resizeStartFrame != .zero else { return }
+
+        let deltaX = screenPoint.x - resizeStartPoint.x
+        let deltaY = screenPoint.y - resizeStartPoint.y
+        let widthFromPositiveX = resizeStartFrame.width + deltaX
+        let widthFromNegativeX = resizeStartFrame.width - deltaX
+        let widthFromPositiveY = resizeStartFrame.width + (deltaY * aspectRatioValue)
+        let widthFromNegativeY = resizeStartFrame.width - (deltaY * aspectRatioValue)
+        let proposedWidth: CGFloat
+        let anchorMaxX: CGFloat
+        let anchorMaxY: CGFloat
+
+        switch resizeRegion {
+        case .right:
+            proposedWidth = widthFromPositiveX
+            anchorMaxX = resizeStartFrame.minX
+            anchorMaxY = resizeStartFrame.maxY
+        case .left:
+            proposedWidth = widthFromNegativeX
+            anchorMaxX = resizeStartFrame.maxX
+            anchorMaxY = resizeStartFrame.maxY
+        case .top:
+            proposedWidth = widthFromPositiveY
+            anchorMaxX = resizeStartFrame.minX
+            anchorMaxY = resizeStartFrame.minY
+        case .bottom:
+            proposedWidth = widthFromNegativeY
+            anchorMaxX = resizeStartFrame.minX
+            anchorMaxY = resizeStartFrame.maxY
+        case .topRight:
+            proposedWidth = preferredCornerWidth(horizontal: widthFromPositiveX, vertical: widthFromPositiveY)
+            anchorMaxX = resizeStartFrame.minX
+            anchorMaxY = resizeStartFrame.minY
+        case .topLeft:
+            proposedWidth = preferredCornerWidth(horizontal: widthFromNegativeX, vertical: widthFromPositiveY)
+            anchorMaxX = resizeStartFrame.maxX
+            anchorMaxY = resizeStartFrame.minY
+        case .bottomRight:
+            proposedWidth = preferredCornerWidth(horizontal: widthFromPositiveX, vertical: widthFromNegativeY)
+            anchorMaxX = resizeStartFrame.minX
+            anchorMaxY = resizeStartFrame.maxY
+        case .bottomLeft:
+            proposedWidth = preferredCornerWidth(horizontal: widthFromNegativeX, vertical: widthFromNegativeY)
+            anchorMaxX = resizeStartFrame.maxX
+            anchorMaxY = resizeStartFrame.maxY
+        }
+
+        let width = max(Self.minimumSize.width, proposedWidth)
+        let height = max(Self.minimumSize.height, width / aspectRatioValue)
+        let originX: CGFloat
+        let originY: CGFloat
+
+        switch resizeRegion {
+        case .left, .topLeft, .bottomLeft:
+            originX = anchorMaxX - width
+        default:
+            originX = anchorMaxX
+        }
+
+        switch resizeRegion {
+        case .top, .topLeft, .topRight:
+            originY = anchorMaxY
+        default:
+            originY = anchorMaxY - height
+        }
+
+        var newFrame = CGRect(x: originX, y: originY, width: width, height: height)
+        if let currentScreenFrame = screen?.visibleFrame ?? screen?.frame {
+            newFrame = RecordingLivePreviewWindow.constrain(frame: newFrame, to: currentScreenFrame)
+        }
+        newFrame = newFrame.integral
+
+        suppressFrameChangeCallback = true
+        setFrame(newFrame, display: true)
+        suppressFrameChangeCallback = false
+    }
+
+    private func preferredCornerWidth(horizontal: CGFloat, vertical: CGFloat) -> CGFloat {
+        let horizontalDelta = abs(horizontal - resizeStartFrame.width)
+        let verticalDelta = abs(vertical - resizeStartFrame.width)
+        return horizontalDelta >= verticalDelta ? horizontal : vertical
+    }
+
+    private static func constrain(frame: CGRect, to screenFrame: CGRect) -> CGRect {
+        var adjusted = frame
+        if adjusted.maxX > screenFrame.maxX {
+            adjusted.origin.x = screenFrame.maxX - adjusted.width
+        }
+        if adjusted.minX < screenFrame.minX {
+            adjusted.origin.x = screenFrame.minX
+        }
+        if adjusted.maxY > screenFrame.maxY {
+            adjusted.origin.y = screenFrame.maxY - adjusted.height
+        }
+        if adjusted.minY < screenFrame.minY {
+            adjusted.origin.y = screenFrame.minY
+        }
+        return adjusted
+    }
+
+    private func notifyFrameChanged() {
+        guard !suppressFrameChangeCallback else { return }
+        onFrameChanged?(frame)
+    }
+}
+
 private final class CountdownOverlayView: NSView {
     private let label = NSTextField(labelWithString: "")
 
@@ -820,6 +1231,9 @@ private final class ColorPanelCoordinator: NSObject {
 
 final class WindowManager: ObservableObject {
     private static let recordingCountdownSeconds = 3
+    private static let livePreviewDuringRecordingKey = "ScreenSeal_plus.livePreviewDuringRecording"
+    private static let livePreviewPinnedKey = "ScreenSeal_plus.livePreviewPinned"
+    private static let livePreviewFrameKey = "ScreenSeal_plus.livePreviewFrame"
     private static let cursorHighlightColorKey = "ScreenSeal_plus.cursorHighlightColor"
     private static let clickRingColorKey = "ScreenSeal_plus.clickRingColor"
     private static let screenshotOpenActionKey = "ScreenSeal_plus.screenshotOpenAction"
@@ -871,6 +1285,14 @@ final class WindowManager: ObservableObject {
             }
         }
     }
+    @Published var livePreviewDuringRecording: Bool {
+        didSet {
+            UserDefaults.standard.set(livePreviewDuringRecording, forKey: Self.livePreviewDuringRecordingKey)
+            DispatchQueue.main.async { [weak self] in
+                self?.syncRecordingLivePreviewVisibility()
+            }
+        }
+    }
     @Published var cursorHighlightEnabled = true
     @Published var clickRingEnabled = true
     @Published private(set) var isSelectingRecordingRegion = false
@@ -896,8 +1318,11 @@ final class WindowManager: ObservableObject {
     private var regionRecordingOverlayWindow: RegionRecordingOverlayWindow?
     private var screenshotPreviewDismissTask: Task<Void, Never>?
     private var screenshotPreviewWindow: ScreenshotPreviewWindow?
+    private var recordingLivePreviewWindow: RecordingLivePreviewWindow?
     private var lastResolvedRecordingTarget: ResolvedRecordingTarget?
     private var lastExternalFrontmostApp: NSRunningApplication?
+    private var livePreviewPinned: Bool
+    private var livePreviewSavedFrame: CGRect?
 
     private var recordingServiceRef: AnyObject?
 
@@ -922,6 +1347,18 @@ final class WindowManager: ObservableObject {
 
     var recordingOptionsDisabled: Bool {
         isRecordingPreparationActive || isTakingScreenshot || captureMode == .screenshot
+    }
+
+    var livePreviewToggleDisabled: Bool {
+        if captureMode == .screenshot || isTakingScreenshot || isSelectingRecordingRegion {
+            return true
+        }
+        switch recordingState {
+        case .starting, .stopping:
+            return true
+        case .idle, .countdown, .recording, .failed:
+            return false
+        }
     }
 
     var shouldDisableNonDisplayTargets: Bool {
@@ -965,6 +1402,9 @@ final class WindowManager: ObservableObject {
         self.recordingZoomScale = RecordingZoomScale(
             rawValue: UserDefaults.standard.double(forKey: Self.recordingZoomScaleKey)
         ) ?? .x1_8
+        self.livePreviewDuringRecording = UserDefaults.standard.bool(forKey: Self.livePreviewDuringRecordingKey)
+        self.livePreviewPinned = UserDefaults.standard.bool(forKey: Self.livePreviewPinnedKey)
+        self.livePreviewSavedFrame = Self.loadRect(forKey: Self.livePreviewFrameKey)
         self.cursorHighlightColor = Self.loadColor(
             forKey: Self.cursorHighlightColorKey,
             fallback: Self.defaultCursorHighlightColor
@@ -1002,6 +1442,7 @@ final class WindowManager: ObservableObject {
         dismissCountdownOverlay()
         dismissRegionRecordingOverlay()
         dismissScreenshotPreview()
+        dismissRecordingLivePreview()
         regionSelectionCoordinator.dismiss()
         if let observer = wakeObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(observer)
@@ -1106,15 +1547,15 @@ final class WindowManager: ObservableObject {
                 let filterContext = await MainActor.run {
                     (
                         excludedApplications: self.excludedCurrentApplications(from: shareableContent),
-                        exceptingWindows: self.overlayShareableWindows(from: shareableContent),
-                        overlayWindowIDs: self.windows.map { CGWindowID($0.windowNumber) }
+                        exceptingWindows: self.includedOverlayShareableWindows(from: shareableContent),
+                        includedOverlayWindowIDs: self.includedRecordingOverlayWindowIDs()
                     )
                 }
                 let result = try await service.capture(
                     target: target,
                     excludedApplications: filterContext.excludedApplications,
                     exceptingWindows: filterContext.exceptingWindows,
-                    overlayWindowIDs: filterContext.overlayWindowIDs
+                    overlayWindowIDs: Array(filterContext.includedOverlayWindowIDs)
                 )
                 await MainActor.run {
                     self.isTakingScreenshot = false
@@ -1156,6 +1597,7 @@ final class WindowManager: ObservableObject {
                 let previewImage = try? await self.recordingPreviewImage(for: outputURL)
                 await MainActor.run {
                     SCContentSharingPicker.shared.isActive = false
+                    self.dismissRecordingLivePreview()
                     self.recordingServiceRef = nil
                     self.recordingState = .idle
                     self.recordingTarget = .display
@@ -1180,6 +1622,7 @@ final class WindowManager: ObservableObject {
                     let previewImage = try? await self.recordingPreviewImage(for: outputURL)
                     await MainActor.run {
                         SCContentSharingPicker.shared.isActive = false
+                        self.dismissRecordingLivePreview()
                         self.recordingServiceRef = nil
                         self.recordingState = .idle
                         self.recordingTarget = .display
@@ -1201,6 +1644,7 @@ final class WindowManager: ObservableObject {
                 } catch {
                     await MainActor.run {
                         SCContentSharingPicker.shared.isActive = false
+                        self.dismissRecordingLivePreview()
                         self.recordingServiceRef = nil
                         self.recordingState = .failed(message: "録画停止に失敗しました")
                         self.recordingTarget = .display
@@ -1216,6 +1660,7 @@ final class WindowManager: ObservableObject {
         countdownTask?.cancel()
         countdownTask = nil
         dismissCountdownOverlay()
+        dismissRecordingLivePreview()
         if isCountdownActive {
             recordingState = .idle
             if case .region(let selection) = recordingTarget {
@@ -1305,6 +1750,11 @@ final class WindowManager: ObservableObject {
         if case .region(let selection) = target {
             showRegionRecordingOverlay(for: selection, editable: false)
         }
+        if livePreviewDuringRecording {
+            _ = prepareRecordingLivePreviewWindow(for: target)
+        } else {
+            dismissRecordingLivePreview()
+        }
         showCountdownOverlay(seconds: Self.recordingCountdownSeconds, target: target)
         recordingState = .countdown(secondsRemaining: Self.recordingCountdownSeconds)
 
@@ -1338,6 +1788,7 @@ final class WindowManager: ObservableObject {
         }
     }
 
+    @MainActor
     @available(macOS 15.0, *)
     private func startRecordingNow(target: ResolvedRecordingTarget) {
         let service = (recordingServiceRef as? RecordingService)
@@ -1345,6 +1796,7 @@ final class WindowManager: ObservableObject {
                 followCursorCameraEnabled: followCursorRecording,
                 cursorHighlightEnabled: cursorHighlightEnabled,
                 clickRingEnabled: clickRingEnabled,
+                livePreviewEnabled: false,
                 zoomScale: recordingZoomScale.rawValue,
                 cursorHighlightColor: cursorHighlightColor,
                 clickRingColor: clickRingColor
@@ -1354,32 +1806,35 @@ final class WindowManager: ObservableObject {
                 self?.recordingState = state
 
                 if case .idle = state {
+                    self?.dismissRecordingLivePreview()
                     self?.recordingServiceRef = nil
                 } else if case .failed = state {
+                    self?.dismissRecordingLivePreview()
                     self?.recordingServiceRef = nil
                 }
             }
         }
         recordingServiceRef = service
-
+        syncRecordingLivePreviewVisibility()
         Task {
             do {
                 let shareableContent = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
                 let recordingFilterContext = await MainActor.run {
-                    (
+                    return (
                         excludedApplications: self.excludedCurrentApplications(from: shareableContent),
-                        exceptingWindows: self.overlayShareableWindows(from: shareableContent),
-                        overlayWindowIDs: self.windows.map { CGWindowID($0.windowNumber) }
+                        exceptingWindows: self.includedOverlayShareableWindows(from: shareableContent),
+                        includedOverlayWindowIDs: Array(self.includedRecordingOverlayWindowIDs())
                     )
                 }
                 _ = try await service.start(
                     target: target,
                     excludedApplications: recordingFilterContext.excludedApplications,
                     exceptingWindows: recordingFilterContext.exceptingWindows,
-                    overlayWindowIDs: recordingFilterContext.overlayWindowIDs
+                    includedOverlayWindowIDs: recordingFilterContext.includedOverlayWindowIDs
                 )
             } catch {
                 await MainActor.run {
+                    self.dismissRecordingLivePreview()
                     self.recordingServiceRef = nil
                     self.recordingState = .failed(message: "録画開始に必要な権限が不足、または開始に失敗しました")
                     self.recordingTarget = .display
@@ -1457,14 +1912,85 @@ final class WindowManager: ObservableObject {
         regionRecordingOverlayWindow = nil
     }
 
+    private func prepareRecordingLivePreviewWindow(for target: ResolvedRecordingTarget) -> RecordingLivePreviewWindow? {
+        guard let screenFrame = previewScreenFrame(for: target) else { return nil }
+
+        let aspectRatio = livePreviewAspectRatio(for: target)
+        let frame = resolvedLivePreviewFrame(on: screenFrame, aspectRatio: aspectRatio)
+
+        if let window = recordingLivePreviewWindow {
+            window.setPinned(livePreviewPinned)
+            window.applyPersistedFrame(frame)
+            window.orderFrontRegardless()
+            return window
+        }
+
+        let window = RecordingLivePreviewWindow(frame: frame, aspectRatio: aspectRatio, pinned: livePreviewPinned)
+        window.onPinToggle = { [weak self] in
+            guard let self else { return }
+            self.livePreviewPinned.toggle()
+            UserDefaults.standard.set(self.livePreviewPinned, forKey: Self.livePreviewPinnedKey)
+            self.recordingLivePreviewWindow?.setPinned(self.livePreviewPinned)
+            self.recordingLivePreviewWindow?.orderFrontRegardless()
+        }
+        window.onFrameChanged = { [weak self] frame in
+            self?.persistLivePreviewFrame(frame)
+        }
+        recordingLivePreviewWindow = window
+        window.orderFrontRegardless()
+        return window
+    }
+
+    private func dismissRecordingLivePreview() {
+        recordingLivePreviewWindow?.orderOut(nil)
+        recordingLivePreviewWindow?.close()
+        recordingLivePreviewWindow = nil
+    }
+
+    @MainActor
+    private func syncRecordingLivePreviewVisibility() {
+        let shouldShowWindow: Bool
+        switch recordingState {
+        case .countdown, .recording:
+            shouldShowWindow = livePreviewDuringRecording && lastResolvedRecordingTarget != nil
+        case .starting:
+            shouldShowWindow = livePreviewDuringRecording && lastResolvedRecordingTarget != nil
+        case .idle, .stopping, .failed:
+            shouldShowWindow = false
+        }
+
+        if shouldShowWindow, let target = lastResolvedRecordingTarget {
+            _ = prepareRecordingLivePreviewWindow(for: target)
+        } else {
+            dismissRecordingLivePreview()
+        }
+
+        if #available(macOS 15.0, *), let service = recordingServiceRef as? RecordingService {
+            service.setLivePreviewEnabled(
+                shouldShowWindow,
+                onPreviewFrame: shouldShowWindow ? livePreviewFrameHandler() : nil
+            )
+        }
+    }
+
+    private func livePreviewFrameHandler() -> ((CGImage) -> Void) {
+        { [weak self] image in
+            self?.recordingLivePreviewWindow?.update(image: image)
+        }
+    }
+
     private func excludedCurrentApplications(from content: SCShareableContent) -> [SCRunningApplication] {
         let selfBundleID = Bundle.main.bundleIdentifier ?? ""
         return content.applications.filter { $0.bundleIdentifier == selfBundleID }
     }
 
-    private func overlayShareableWindows(from content: SCShareableContent) -> [SCWindow] {
-        let overlayWindowIDs = Set(windows.map { CGWindowID($0.windowNumber) })
-        return content.windows.filter { overlayWindowIDs.contains($0.windowID) }
+    private func includedRecordingOverlayWindowIDs() -> Set<CGWindowID> {
+        Set(windows.map { CGWindowID($0.windowNumber) })
+    }
+
+    private func includedOverlayShareableWindows(from content: SCShareableContent, windowIDs: Set<CGWindowID>? = nil) -> [SCWindow] {
+        let targetWindowIDs = windowIDs ?? includedRecordingOverlayWindowIDs()
+        return content.windows.filter { targetWindowIDs.contains($0.windowID) }
     }
 
     private func clearStatusForModeChange() {
@@ -1551,6 +2077,37 @@ final class WindowManager: ObservableObject {
         screenshotPreviewDismissTask = nil
     }
 
+    private func livePreviewAspectRatio(for target: ResolvedRecordingTarget) -> CGFloat {
+        switch target {
+        case .display(_, let frame):
+            return max(0.1, frame.width / max(frame.height, 1))
+        case .window(_, let windowFrame, _, _):
+            return max(0.1, windowFrame.width / max(windowFrame.height, 1))
+        case .region(let selection):
+            return max(0.1, selection.rect.width / max(selection.rect.height, 1))
+        }
+    }
+
+    private func resolvedLivePreviewFrame(on screenFrame: CGRect, aspectRatio: CGFloat) -> CGRect {
+        let defaultFrame = Self.defaultLivePreviewFrame(on: screenFrame, aspectRatio: aspectRatio)
+        guard let savedFrame = livePreviewSavedFrame else { return defaultFrame }
+        let minimumSize = CGSize(width: 240, height: 135)
+        let width = max(minimumSize.width, savedFrame.width)
+        let height = max(minimumSize.height, width / max(aspectRatio, 0.1))
+        let normalized = CGRect(
+            x: savedFrame.origin.x,
+            y: savedFrame.maxY - height,
+            width: width,
+            height: height
+        )
+        return Self.constrainLivePreviewFrame(normalized, to: screenFrame, defaultFrame: defaultFrame)
+    }
+
+    private func persistLivePreviewFrame(_ frame: CGRect) {
+        livePreviewSavedFrame = frame.integral
+        Self.saveRect(frame.integral, forKey: Self.livePreviewFrameKey)
+    }
+
     private func previewScreenFrame(for target: ResolvedRecordingTarget) -> CGRect? {
         switch target {
         case .display(_, let frame):
@@ -1635,6 +2192,49 @@ final class WindowManager: ObservableObject {
             return fallback
         }
         return normalizedColor.cgColor
+    }
+
+    private static func saveRect(_ rect: CGRect, forKey key: String) {
+        UserDefaults.standard.set(NSStringFromRect(rect), forKey: key)
+    }
+
+    private static func loadRect(forKey key: String) -> CGRect? {
+        guard let text = UserDefaults.standard.string(forKey: key) else { return nil }
+        let rect = NSRectFromString(text)
+        guard rect.width > 0, rect.height > 0 else { return nil }
+        return rect
+    }
+
+    private static func defaultLivePreviewFrame(on screenFrame: CGRect, aspectRatio: CGFloat) -> CGRect {
+        let width = min(320.0, max(240.0, screenFrame.width * 0.22))
+        let height = max(135.0, width / max(aspectRatio, 0.1))
+        return CGRect(
+            x: screenFrame.maxX - width - 56,
+            y: screenFrame.minY + 112,
+            width: width,
+            height: height
+        ).integral
+    }
+
+    private static func constrainLivePreviewFrame(_ frame: CGRect, to screenFrame: CGRect, defaultFrame: CGRect) -> CGRect {
+        guard !frame.isEmpty else { return defaultFrame }
+        let clampedWidth = min(max(frame.width, 240), screenFrame.width)
+        let clampedHeight = min(max(frame.height, 135), screenFrame.height)
+        var adjusted = CGRect(
+            x: frame.origin.x,
+            y: frame.origin.y,
+            width: clampedWidth,
+            height: clampedHeight
+        )
+        if adjusted.maxX > screenFrame.maxX {
+            adjusted.origin.x = screenFrame.maxX - adjusted.width
+        }
+        if adjusted.maxY > screenFrame.maxY {
+            adjusted.origin.y = screenFrame.maxY - adjusted.height
+        }
+        adjusted.origin.x = max(screenFrame.minX, adjusted.origin.x)
+        adjusted.origin.y = max(screenFrame.minY, adjusted.origin.y)
+        return adjusted.integral
     }
 
     fileprivate func setOverlayWindowsInteractive(_ interactive: Bool) {
