@@ -33,11 +33,14 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
     private let clickRingEnabled: Bool
     private let highlightRadius: CGFloat = 100
     private let highlightColor: NSColor
-    private let clickRingDuration: CFTimeInterval = 0.3
-    private let clickRingBaseRadius: CGFloat = 20
-    private let clickRingMaxRadius: CGFloat = 90
+    private let clickRingPressInDuration: CFTimeInterval = 0.10
+    private let clickRingReleaseOutDuration: CFTimeInterval = 0.22
+    private let clickRingPressStartRadius: CGFloat = 38
+    private let clickRingSteadyRadius: CGFloat = 56
+    private let clickRingReleaseEndRadius: CGFloat = 30
     private let clickRingSpacing: CGFloat = 30
-    private let clickRingLineWidth: CGFloat = 6
+    private let clickRingLineWidth: CGFloat = 4
+    private let clickRingSteadyAlpha: CGFloat = 0.65
     private let clickRingColor: NSColor
     private var livePreviewEnabled: Bool
     private var activeTarget: ResolvedRecordingTarget?
@@ -74,7 +77,8 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
     private var lastLivePreviewTimestamp: CFTimeInterval = -.greatestFiniteMagnitude
 
     private struct ClickRingStampKey: Equatable {
-        let progressBucket: Int
+        let outerRadius: Int
+        let innerRadius: Int
         let red: Int
         let green: Int
         let blue: Int
@@ -94,6 +98,11 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         let hotSpot: CGPoint
         let pixelSize: CGSize
         let isTextInsertionCursor: Bool
+    }
+
+    private struct ClickRingVisualState {
+        let radius: CGFloat
+        let alpha: CGFloat
     }
 
     private(set) var state: RecordingState = .idle {
@@ -860,19 +869,27 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
 
         var output = image
         let outputRect = CGRect(origin: .zero, size: outputSize)
-        var ringProgress: CGFloat?
+        var ringVisualState: ClickRingVisualState?
         if clickRingEnabled, let lastClickTimestamp = self.lastClickTimestamp {
             if pointer.isPrimaryButtonPressed {
-                ringProgress = 0
+                let elapsed = max(0, now - lastClickTimestamp)
+                let progress = min(max(elapsed / clickRingPressInDuration, 0), 1)
+                let radius = clickRingPressStartRadius
+                    + ((clickRingSteadyRadius - clickRingPressStartRadius) * CGFloat(progress))
+                let alpha = max(0.18, clickRingSteadyAlpha * CGFloat(progress))
+                ringVisualState = ClickRingVisualState(radius: radius, alpha: alpha)
             } else {
                 if self.lastClickReleaseTimestamp == nil {
                     self.lastClickReleaseTimestamp = max(now, lastClickTimestamp)
                 }
                 if let releaseTimestamp = self.lastClickReleaseTimestamp {
                     let elapsed = max(0, now - releaseTimestamp)
-                    let progress = min(max(elapsed / clickRingDuration, 0), 1)
+                    let progress = min(max(elapsed / clickRingReleaseOutDuration, 0), 1)
                     if progress < 1 {
-                        ringProgress = CGFloat(progress)
+                        let radius = clickRingSteadyRadius
+                            + ((clickRingReleaseEndRadius - clickRingSteadyRadius) * CGFloat(progress))
+                        let alpha = clickRingSteadyAlpha * (1 - CGFloat(progress))
+                        ringVisualState = ClickRingVisualState(radius: radius, alpha: alpha)
                     } else {
                         self.lastClickTimestamp = nil
                         self.lastClickReleaseTimestamp = nil
@@ -884,9 +901,9 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         }
         let isTextInsertionCursor = currentCursorOverlay()?.isTextInsertionCursor ?? false
         if lastClickWasTextInsertion || isTextInsertionCursor {
-            ringProgress = nil
+            ringVisualState = nil
         }
-        let isRingActive = (ringProgress != nil)
+        let isRingActive = (ringVisualState != nil)
 
         if cursorHighlightEnabled, let cursorPoint {
             let highlightAlphaMultiplier: CGFloat = isRingActive ? 0.75 : 1.0
@@ -914,12 +931,13 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             )
         } ?? clickPoint ?? cursorPoint
 
-        if let progress = ringProgress,
+        if let visualState = ringVisualState,
            let clickPoint = resolvedClickPoint,
            let ringOverlay = makeClickRingOverlayImage(
             outputSize: outputSize,
             center: clickPoint,
-            progress: progress
+            radius: visualState.radius,
+            alpha: visualState.alpha
            ) {
             output = ringOverlay.composited(over: output)
         }
@@ -950,9 +968,10 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
     private func makeClickRingOverlayImage(
         outputSize: CGSize,
         center: CGPoint,
-        progress: CGFloat
+        radius: CGFloat,
+        alpha: CGFloat
     ) -> CIImage? {
-        guard let stamp = clickRingStampImage(progress: progress) else { return nil }
+        guard let stamp = clickRingStampImage(radius: radius, alpha: alpha) else { return nil }
         let translated = stamp.transformed(
             by: CGAffineTransform(
                 translationX: center.x - (stamp.extent.width / 2),
@@ -1021,7 +1040,8 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             return nil
         }
 
-        let hotSpot = cursor.hotSpot
+        let pixelSize = CGSize(width: cgImage.width, height: cgImage.height)
+        let hotSpot = pixelHotSpot(for: cursor, pixelSize: pixelSize)
         let key = CursorOverlayCacheKey(
             cursorIdentifier: ObjectIdentifier(cursor),
             pixelWidth: cgImage.width,
@@ -1029,7 +1049,6 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             hotSpotX: Int((hotSpot.x * 1000).rounded()),
             hotSpotY: Int((hotSpot.y * 1000).rounded())
         )
-        let pixelSize = CGSize(width: cgImage.width, height: cgImage.height)
         let isTextInsertionCursor = isTextInsertionCursor(
             cursor,
             pixelSize: pixelSize,
@@ -1056,6 +1075,16 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         )
     }
 
+    private func pixelHotSpot(for cursor: NSCursor, pixelSize: CGSize) -> CGPoint {
+        let imageSize = cursor.image.size
+        let scaleX = imageSize.width > 0 ? (pixelSize.width / imageSize.width) : 1
+        let scaleY = imageSize.height > 0 ? (pixelSize.height / imageSize.height) : 1
+        return CGPoint(
+            x: cursor.hotSpot.x * scaleX,
+            y: cursor.hotSpot.y * scaleY
+        )
+    }
+
     private func isTextInsertionCursor(
         _ cursor: NSCursor,
         pixelSize: CGSize,
@@ -1075,25 +1104,25 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
                 return false
             }
             let candidateSize = CGSize(width: cgImage.width, height: cgImage.height)
-            return candidateSize == pixelSize && candidate.hotSpot == hotSpot
+            let candidateHotSpot = pixelHotSpot(for: candidate, pixelSize: candidateSize)
+            return candidateSize == pixelSize && candidateHotSpot == hotSpot
         }
     }
 
-    private func clickRingStampImage(progress: CGFloat) -> CIImage? {
-        let fade = max(0.45, 1 - progress)
-        let radius = clickRingBaseRadius + ((clickRingMaxRadius - clickRingBaseRadius) * progress)
+    private func clickRingStampImage(radius: CGFloat, alpha: CGFloat) -> CIImage? {
         let innerRadius = max(1, radius - clickRingSpacing)
         let ringColor = NSColor(
             deviceRed: clickRingColor.redComponent,
             green: clickRingColor.greenComponent,
             blue: clickRingColor.blueComponent,
-            alpha: clickRingColor.alphaComponent * fade
+            alpha: clickRingColor.alphaComponent * alpha
         )
         .cgColor
 
         let ringNSColor = NSColor(cgColor: ringColor)?.usingColorSpace(.deviceRGB) ?? .white
         let key = ClickRingStampKey(
-            progressBucket: Int((progress * 1000).rounded()),
+            outerRadius: Int((radius * 1000).rounded()),
+            innerRadius: Int((innerRadius * 1000).rounded()),
             red: Int((ringNSColor.redComponent * 1000).rounded()),
             green: Int((ringNSColor.greenComponent * 1000).rounded()),
             blue: Int((ringNSColor.blueComponent * 1000).rounded()),
