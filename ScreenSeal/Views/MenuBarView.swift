@@ -129,33 +129,22 @@ struct MenuBarView: View {
             .disabled(windowManager.isScreenshotActionDisabled)
         }
 
-        Menu("Capture Mode") {
-            Button {
-                windowManager.captureMode = .record
-            } label: {
-                selectionMenuLabel("Record", selected: windowManager.captureMode == .record)
-            }
-
-            Button {
-                windowManager.captureMode = .screenshot
-            } label: {
-                selectionMenuLabel("Screenshot", selected: windowManager.captureMode == .screenshot)
-            }
+        Picker("Capture Mode", selection: $windowManager.captureMode) {
+            Text("Record").tag(CaptureMode.record)
+            Text("Screenshot").tag(CaptureMode.screenshot)
         }
         .disabled(windowManager.isCaptureModeSelectionDisabled)
 
         if windowManager.captureMode == .screenshot {
-            Menu("Screenshot Type") {
-                Button {
-                    windowManager.screenshotCaptureType = .single
-                } label: {
-                    selectionMenuLabel("Single Screenshot", selected: windowManager.screenshotCaptureType == .single)
-                }
+            Picker("Screenshot Type", selection: $windowManager.screenshotCaptureType) {
+                Text("Single Screenshot").tag(ScreenshotCaptureType.single)
+                Text("Scroll Capture").tag(ScreenshotCaptureType.scroll)
+            }
+            .disabled(windowManager.isTakingScreenshot)
 
-                Button {
-                    windowManager.screenshotCaptureType = .scroll
-                } label: {
-                    selectionMenuLabel("Scroll Capture", selected: windowManager.screenshotCaptureType == .scroll)
+            Picker("Screenshot Scale", selection: $windowManager.screenshotScaleOption) {
+                ForEach(windowManager.availableScreenshotScaleOptions, id: \.self) { option in
+                    Text(option.rawValue).tag(option)
                 }
             }
             .disabled(windowManager.isTakingScreenshot)
@@ -190,43 +179,21 @@ struct MenuBarView: View {
         }
         .disabled(windowManager.isCaptureModeSelectionDisabled)
 
-        Menu("Screenshot Click Action") {
-            Button {
-                windowManager.screenshotOpenAction = .preview
-            } label: {
-                selectionMenuLabel("Preview", selected: windowManager.screenshotOpenAction == .preview)
-            }
-
-            Button {
-                windowManager.screenshotOpenAction = .finder
-            } label: {
-                selectionMenuLabel("Finder", selected: windowManager.screenshotOpenAction == .finder)
-            }
+        Picker("Screenshot Click Action", selection: $windowManager.screenshotOpenAction) {
+            Text("Preview").tag(ScreenshotOpenAction.preview)
+            Text("Finder").tag(ScreenshotOpenAction.finder)
         }
         .disabled(windowManager.isTakingScreenshot)
 
-        Menu("Recording Click Action") {
-            Button {
-                windowManager.recordingOpenAction = .quickTime
-            } label: {
-                selectionMenuLabel("QuickTime", selected: windowManager.recordingOpenAction == .quickTime)
-            }
-
-            Button {
-                windowManager.recordingOpenAction = .finder
-            } label: {
-                selectionMenuLabel("Finder", selected: windowManager.recordingOpenAction == .finder)
-            }
+        Picker("Recording Click Action", selection: $windowManager.recordingOpenAction) {
+            Text("QuickTime").tag(RecordingOpenAction.quickTime)
+            Text("Finder").tag(RecordingOpenAction.finder)
         }
         .disabled(windowManager.isRecordingPreparationActive)
 
-        Menu("Zoom Magnification") {
+        Picker("Zoom Magnification", selection: $windowManager.recordingZoomScale) {
             ForEach(RecordingZoomScale.allCases, id: \.self) { scale in
-                Button {
-                    windowManager.recordingZoomScale = scale
-                } label: {
-                    selectionMenuLabel(scale.menuTitle, selected: windowManager.recordingZoomScale == scale)
-                }
+                Text(scale.menuTitle).tag(scale)
             }
         }
         .disabled(windowManager.recordingOptionsDisabled)
@@ -298,4 +265,5 @@ struct MenuBarView: View {
             Text(title)
         }
     }
+
 }

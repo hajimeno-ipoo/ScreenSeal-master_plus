@@ -135,16 +135,18 @@ struct ScreenshotCaptureResult {
 final class ScreenshotService {
     func capture(
         target: ResolvedRecordingTarget,
+        scaleOption: ScreenshotScaleOption = .original,
         excludedApplications: [SCRunningApplication] = [],
         exceptingWindows: [SCWindow] = [],
         overlayWindowIDs: [CGWindowID] = []
     ) async throws -> ScreenshotCaptureResult {
-        let image = try await captureImage(
+        let originalImage = try await captureImage(
             target: target,
             excludedApplications: excludedApplications,
             exceptingWindows: exceptingWindows,
             overlayWindowIDs: overlayWindowIDs
         )
+        let image = try Self.processImage(originalImage, for: target, scaleOption: scaleOption)
         let outputURL = try Self.makeSingleScreenshotOutputURL()
         try Self.savePNG(image, to: outputURL)
         screenshotLogger.info("Screenshot saved: \(outputURL.path)")
@@ -264,6 +266,38 @@ final class ScreenshotService {
         try data.write(to: url, options: .atomic)
     }
 
+    static func processImage(
+        _ image: CGImage,
+        for target: ResolvedRecordingTarget,
+        scaleOption: ScreenshotScaleOption
+    ) throws -> CGImage {
+        guard scaleOption != .original else { return image }
+
+        let backingScale = max(1, backingScaleFactor(for: target))
+        let logicalWidth = CGFloat(image.width) / backingScale
+        let logicalHeight = CGFloat(image.height) / backingScale
+
+        let requestedScale: CGFloat
+        switch scaleOption {
+        case .original:
+            return image
+        case .x2:
+            requestedScale = 2.0
+        case .x1:
+            requestedScale = 1.0
+        case .x0_5:
+            requestedScale = 0.5
+        }
+
+        let targetWidth = min(CGFloat(image.width), max(1, round(logicalWidth * requestedScale)))
+        let targetHeight = min(CGFloat(image.height), max(1, round(logicalHeight * requestedScale)))
+        guard Int(targetWidth) != image.width || Int(targetHeight) != image.height else {
+            return image
+        }
+
+        return try resizedImage(image, width: Int(targetWidth), height: Int(targetHeight))
+    }
+
     static func makeOutputDirectory() throws -> URL {
         let pictures = FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Pictures", isDirectory: true)
@@ -283,18 +317,48 @@ final class ScreenshotService {
         return directory.appendingPathComponent("ScreenSeal_plus-\(makeTimestampString()).png")
     }
 
-    @MainActor
     private static func screen(forDisplayID displayID: CGDirectDisplayID) -> NSScreen? {
         NSScreen.screens.first(where: { $0.displayID == displayID })
     }
 
-    @MainActor
     private static func screen(containing frame: CGRect) -> NSScreen? {
         let center = CGPoint(x: frame.midX, y: frame.midY)
         if let screen = NSScreen.screens.first(where: { $0.frame.contains(center) }) {
             return screen
         }
         return NSScreen.screens.first(where: { $0.frame.intersects(frame) })
+    }
+
+    private static func backingScaleFactor(for target: ResolvedRecordingTarget) -> CGFloat {
+        switch target {
+        case .display(let displayID, _):
+            return screen(forDisplayID: displayID)?.backingScaleFactor ?? 1.0
+        case .window(_, let windowFrame, _, _):
+            return screen(containing: windowFrame)?.backingScaleFactor ?? 1.0
+        case .region(let selection):
+            return screen(forDisplayID: selection.displayID)?.backingScaleFactor ?? 1.0
+        }
+    }
+
+    private static func resizedImage(_ image: CGImage, width: Int, height: Int) throws -> CGImage {
+        guard let context = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: image.colorSpace ?? CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            throw ScreenshotError.imageCreationFailed
+        }
+
+        context.interpolationQuality = .high
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        guard let scaledImage = context.makeImage() else {
+            throw ScreenshotError.imageCreationFailed
+        }
+        return scaledImage
     }
 }
 
@@ -319,6 +383,7 @@ final class ScrollCaptureService {
 
     func capture(
         target: ResolvedRecordingTarget,
+        scaleOption: ScreenshotScaleOption = .original,
         excludedApplications: [SCRunningApplication] = [],
         exceptingWindows: [SCWindow] = [],
         overlayWindowIDs: [CGWindowID] = [],
@@ -338,13 +403,15 @@ final class ScrollCaptureService {
         }
 
         let scrollPoint = Self.scrollPoint(for: target)
-        let firstImage = try await screenshotService.captureImage(
+        let firstCapturedImage = try await screenshotService.captureImage(
             target: target,
             excludedApplications: excludedApplications,
             exceptingWindows: exceptingWindows,
             overlayWindowIDs: overlayWindowIDs
         )
+        let firstImage = try ScreenshotService.processImage(firstCapturedImage, for: target, scaleOption: scaleOption)
         var previousImage = firstImage
+        var previousViewportHeight = firstCapturedImage.height
         var segments: [CGImage] = [firstImage]
         var totalHeight = firstImage.height
         var stepIndex = 1
@@ -357,15 +424,16 @@ final class ScrollCaptureService {
         while stepIndex < Self.maxStepCount {
             if stopRequested() { break }
 
-            try Self.postScroll(at: scrollPoint, viewportHeight: previousImage.height, direction: scrollDirection)
+            try Self.postScroll(at: scrollPoint, viewportHeight: previousViewportHeight, direction: scrollDirection)
             try await Task.sleep(nanoseconds: Self.captureDelayNanoseconds)
 
-            let currentImage = try await screenshotService.captureImage(
+            let currentCapturedImage = try await screenshotService.captureImage(
                 target: target,
                 excludedApplications: excludedApplications,
                 exceptingWindows: exceptingWindows,
                 overlayWindowIDs: overlayWindowIDs
             )
+            let currentImage = try ScreenshotService.processImage(currentCapturedImage, for: target, scaleOption: scaleOption)
             let analysis = try Self.analyzeAppend(previous: previousImage, current: currentImage)
 
             if !didReverseDirection, stepIndex == 1, analysis.newContentHeight < Self.minimumNewContentHeight {
@@ -381,6 +449,7 @@ final class ScrollCaptureService {
             if analysis.newContentHeight < Self.minimumNewContentHeight {
                 noProgressCount += 1
                 previousImage = currentImage
+                previousViewportHeight = currentCapturedImage.height
                 if noProgressCount >= Self.endDetectionRepeatCount {
                     break
                 }
@@ -400,6 +469,7 @@ final class ScrollCaptureService {
                 totalHeight += appendedSegment.height
             }
             previousImage = currentImage
+            previousViewportHeight = currentCapturedImage.height
 
             if totalHeight >= Self.maxOutputHeight {
                 break

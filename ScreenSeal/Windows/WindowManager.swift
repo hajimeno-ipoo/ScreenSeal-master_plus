@@ -55,9 +55,9 @@ private final class WindowSelectionPickerCoordinator: NSObject, SCContentSharing
         logger.error("Window picker failed to start: \(error.localizedDescription)")
     }
 
-    private static func resolveSelection(from filter: SCContentFilter) async throws -> (windowID: CGWindowID, displayName: String)? {
+    private static func resolveSelection(from filter: SCContentFilter) async throws -> (windowID: CGWindowID, displayID: CGDirectDisplayID?, displayName: String)? {
         if #available(macOS 15.2, *), let window = filter.includedWindows.first {
-            return (window.windowID, makeDisplayName(for: window))
+            return (window.windowID, Self.displayID(for: window.frame), makeDisplayName(for: window))
         }
 
         let info = SCShareableContent.info(for: filter)
@@ -66,7 +66,7 @@ private final class WindowSelectionPickerCoordinator: NSObject, SCContentSharing
         guard let window = content.windows.first(where: { approximatelyMatches($0.frame, info.contentRect) }) else {
             return nil
         }
-        return (window.windowID, makeDisplayName(for: window))
+        return (window.windowID, Self.displayID(for: window.frame), makeDisplayName(for: window))
     }
 
     private static func approximatelyMatches(_ lhs: CGRect, _ rhs: CGRect) -> Bool {
@@ -81,6 +81,14 @@ private final class WindowSelectionPickerCoordinator: NSObject, SCContentSharing
         let cleanedTitle = (window.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanedTitle.isEmpty else { return appName }
         return "\(appName) - \(cleanedTitle)"
+    }
+
+    private static func displayID(for frame: CGRect) -> CGDirectDisplayID? {
+        let center = CGPoint(x: frame.midX, y: frame.midY)
+        if let screen = NSScreen.screens.first(where: { $0.frame.contains(center) }) {
+            return screen.displayID
+        }
+        return NSScreen.screens.first(where: { $0.frame.intersects(frame) })?.displayID
     }
 }
 
@@ -103,6 +111,13 @@ enum ScreenshotOpenAction: String, CaseIterable, Equatable {
 enum ScreenshotCaptureType: String, CaseIterable, Equatable {
     case single = "Single Screenshot"
     case scroll = "Scroll Capture"
+}
+
+enum ScreenshotScaleOption: String, CaseIterable, Equatable {
+    case original = "original"
+    case x2 = "2x"
+    case x1 = "1x"
+    case x0_5 = "0.5x"
 }
 
 enum RecordingOpenAction: String, CaseIterable, Equatable {
@@ -1242,6 +1257,7 @@ final class WindowManager: ObservableObject {
     private static let cursorHighlightColorKey = "ScreenSeal_plus.cursorHighlightColor"
     private static let clickRingColorKey = "ScreenSeal_plus.clickRingColor"
     private static let screenshotOpenActionKey = "ScreenSeal_plus.screenshotOpenAction"
+    private static let screenshotScaleOptionKey = "ScreenSeal_plus.screenshotScaleOption"
     private static let recordingOpenActionKey = "ScreenSeal_plus.recordingOpenAction"
     private static let recordingZoomScaleKey = "ScreenSeal_plus.recordingZoomScale"
     private static let previewBundleIdentifier = "com.apple.Preview"
@@ -1272,6 +1288,9 @@ final class WindowManager: ObservableObject {
     @Published private(set) var screenshotStatusIsFailure = false
     @Published private(set) var isTakingScreenshot = false
     @Published var screenshotCaptureType: ScreenshotCaptureType = .single
+    @Published var screenshotScaleOption: ScreenshotScaleOption {
+        didSet { UserDefaults.standard.set(screenshotScaleOption.rawValue, forKey: Self.screenshotScaleOptionKey) }
+    }
     @Published private(set) var isScrollCaptureRunning = false
     @Published var screenshotOpenAction: ScreenshotOpenAction {
         didSet { UserDefaults.standard.set(screenshotOpenAction.rawValue, forKey: Self.screenshotOpenActionKey) }
@@ -1284,6 +1303,7 @@ final class WindowManager: ObservableObject {
     }
     @Published var recordingTarget: RecordingTarget = .display
     @Published private(set) var selectedWindowDisplayName: String?
+    @Published private(set) var selectedWindowDisplayID: CGDirectDisplayID?
     @Published var followCursorRecording = false {
         didSet {
             guard followCursorRecording else { return }
@@ -1392,6 +1412,19 @@ final class WindowManager: ObservableObject {
         isScrollCaptureRunning ? "Stop Scroll Capture" : "Take Screenshot"
     }
 
+    var availableScreenshotScaleOptions: [ScreenshotScaleOption] {
+        var options: [ScreenshotScaleOption] = [.original]
+        if isCurrentScreenshotTargetRetina {
+            options.append(.x2)
+        }
+        options.append(contentsOf: [.x1, .x0_5])
+        return options
+    }
+
+    private var effectiveScreenshotScaleOption: ScreenshotScaleOption {
+        availableScreenshotScaleOptions.contains(screenshotScaleOption) ? screenshotScaleOption : .original
+    }
+
     var statusText: String? {
         switch captureMode {
         case .record:
@@ -1420,6 +1453,9 @@ final class WindowManager: ObservableObject {
     }
 
     init() {
+        self.screenshotScaleOption = ScreenshotScaleOption(
+            rawValue: UserDefaults.standard.string(forKey: Self.screenshotScaleOptionKey) ?? ""
+        ) ?? .original
         self.screenshotOpenAction = ScreenshotOpenAction(
             rawValue: UserDefaults.standard.string(forKey: Self.screenshotOpenActionKey) ?? ""
         ) ?? .preview
@@ -1591,6 +1627,7 @@ final class WindowManager: ObservableObject {
                 }
                 let result = try await service.capture(
                     target: target,
+                    scaleOption: self.effectiveScreenshotScaleOption,
                     excludedApplications: filterContext.excludedApplications,
                     exceptingWindows: filterContext.exceptingWindows,
                     overlayWindowIDs: Array(filterContext.includedOverlayWindowIDs)
@@ -1668,6 +1705,7 @@ final class WindowManager: ObservableObject {
                     }
                     let result = try await service.capture(
                         target: target,
+                        scaleOption: self.effectiveScreenshotScaleOption,
                         excludedApplications: filterContext.excludedApplications,
                         exceptingWindows: filterContext.exceptingWindows,
                         overlayWindowIDs: Array(filterContext.includedOverlayWindowIDs),
@@ -1802,6 +1840,7 @@ final class WindowManager: ObservableObject {
     func selectDisplayRecordingTarget() {
         recordingTarget = .display
         selectedWindowDisplayName = nil
+        selectedWindowDisplayID = nil
         dismissRegionRecordingOverlay()
     }
 
@@ -1815,9 +1854,10 @@ final class WindowManager: ObservableObject {
         )
     }
 
-    func applySystemWindowSelection(_ selection: (windowID: CGWindowID, displayName: String)) {
+    func applySystemWindowSelection(_ selection: (windowID: CGWindowID, displayID: CGDirectDisplayID?, displayName: String)) {
         recordingTarget = .window(windowID: selection.windowID)
         selectedWindowDisplayName = selection.displayName
+        selectedWindowDisplayID = selection.displayID
         dismissRegionRecordingOverlay()
     }
 
@@ -1830,6 +1870,7 @@ final class WindowManager: ObservableObject {
             self?.isSelectingRecordingRegion = false
             self?.recordingTarget = .region(selection)
             self?.selectedWindowDisplayName = nil
+            self?.selectedWindowDisplayID = nil
             self?.showRegionRecordingOverlay(for: selection, editable: true)
         } onCancel: { [weak self] in
             self?.isSelectingRecordingRegion = false
@@ -2036,6 +2077,7 @@ final class WindowManager: ObservableObject {
             let globalRect = localRect.offsetBy(dx: displayFrame.minX, dy: displayFrame.minY)
             let selection = RecordingRegionSelection(displayID: selection.displayID, rect: globalRect.integral)
             self.recordingTarget = .region(selection)
+            self.selectedWindowDisplayID = nil
         }
         regionRecordingOverlayWindow = window
         window.orderFrontRegardless()
@@ -2256,6 +2298,25 @@ final class WindowManager: ObservableObject {
             return nil
         }
         return image.cgImage(forProposedRect: nil, context: nil, hints: nil)
+    }
+
+    private var isCurrentScreenshotTargetRetina: Bool {
+        currentScreenshotTargetBackingScaleFactor > 1.0
+    }
+
+    private var currentScreenshotTargetBackingScaleFactor: CGFloat {
+        switch recordingTarget {
+        case .display:
+            let displayID =
+                windows.first(where: { $0.isVisible })?.screen?.displayID
+                ?? CGMainDisplayID()
+            return NSScreen.screens.first(where: { $0.displayID == displayID })?.backingScaleFactor ?? 1.0
+        case .window:
+            guard let displayID = selectedWindowDisplayID else { return 1.0 }
+            return NSScreen.screens.first(where: { $0.displayID == displayID })?.backingScaleFactor ?? 1.0
+        case .region(let selection):
+            return NSScreen.screens.first(where: { $0.displayID == selection.displayID })?.backingScaleFactor ?? 1.0
+        }
     }
 
     func cleanupTemporaryScrollPreviewArtifacts() {
