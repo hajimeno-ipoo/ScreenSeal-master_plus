@@ -25,7 +25,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
     private let outputResolution = CGSize(width: 1920, height: 1080)
     private let idleCameraScale: CGFloat = 0.6
     private let idleFollowMinimumScale: CGFloat = 1.15
-    private let idlePanDeadzoneRatio: CGFloat = 0.20
+    private let idlePanDeadzoneRatio: CGFloat = 0.04
     private let zoomPanDeadzoneRatio: CGFloat = 0.08
     private let idlePanDurationMultiplier: CGFloat = 1.8
     private let followCursorCameraEnabled: Bool
