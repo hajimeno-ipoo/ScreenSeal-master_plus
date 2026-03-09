@@ -62,6 +62,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
     private var lastClickTimestamp: CFTimeInterval?
     private var lastClickReleaseTimestamp: CFTimeInterval?
     private var lastClickScreenLocation: CGPoint?
+    private var lastClickWasTextInsertion = false
     private var clickRingStampCacheKey: ClickRingStampKey?
     private var clickRingStampCacheImage: CIImage?
     private var cursorOverlayCacheKey: CursorOverlayCacheKey?
@@ -86,6 +87,13 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         let pixelHeight: Int
         let hotSpotX: Int
         let hotSpotY: Int
+    }
+
+    private struct CursorOverlayState {
+        let image: CIImage
+        let hotSpot: CGPoint
+        let pixelSize: CGSize
+        let isTextInsertionCursor: Bool
     }
 
     private(set) var state: RecordingState = .idle {
@@ -837,13 +845,16 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         if pointer.lastClickEventID > 0, pointer.lastClickEventID != lastHandledClickEventID {
             lastHandledClickEventID = pointer.lastClickEventID
             if let clickLocation = pointer.lastClickLocation {
+                let currentCursorWasTextInsertion = currentCursorOverlay()?.isTextInsertionCursor ?? false
                 lastClickTimestamp = now
                 lastClickReleaseTimestamp = nil
                 lastClickScreenLocation = clickLocation
+                lastClickWasTextInsertion = currentCursorWasTextInsertion
             } else {
                 lastClickTimestamp = nil
                 lastClickReleaseTimestamp = nil
                 lastClickScreenLocation = nil
+                lastClickWasTextInsertion = false
             }
         }
 
@@ -866,9 +877,14 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
                         self.lastClickTimestamp = nil
                         self.lastClickReleaseTimestamp = nil
                         self.lastClickScreenLocation = nil
+                        self.lastClickWasTextInsertion = false
                     }
                 }
             }
+        }
+        let isTextInsertionCursor = currentCursorOverlay()?.isTextInsertionCursor ?? false
+        if lastClickWasTextInsertion || isTextInsertionCursor {
+            ringProgress = nil
         }
         let isRingActive = (ringProgress != nil)
 
@@ -965,7 +981,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         return clipped.composited(over: image)
     }
 
-    private func currentCursorOverlay() -> (image: CIImage, hotSpot: CGPoint, pixelSize: CGSize)? {
+    private func currentCursorOverlay() -> CursorOverlayState? {
         for cursor in cursorCandidatesForOverlay() {
             if let overlay = cursorOverlayImage(for: cursor) {
                 return overlay
@@ -998,7 +1014,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         return unmanaged.takeUnretainedValue() as? NSCursor
     }
 
-    private func cursorOverlayImage(for cursor: NSCursor) -> (image: CIImage, hotSpot: CGPoint, pixelSize: CGSize)? {
+    private func cursorOverlayImage(for cursor: NSCursor) -> CursorOverlayState? {
         let nsImage = cursor.image
         var proposedRect = CGRect(origin: .zero, size: nsImage.size)
         guard let cgImage = nsImage.cgImage(forProposedRect: &proposedRect, context: nil, hints: nil) else {
@@ -1013,15 +1029,54 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             hotSpotX: Int((hotSpot.x * 1000).rounded()),
             hotSpotY: Int((hotSpot.y * 1000).rounded())
         )
+        let pixelSize = CGSize(width: cgImage.width, height: cgImage.height)
+        let isTextInsertionCursor = isTextInsertionCursor(
+            cursor,
+            pixelSize: pixelSize,
+            hotSpot: hotSpot
+        )
         if key == cursorOverlayCacheKey, let cached = cursorOverlayCacheImage {
-            return (cached, hotSpot, CGSize(width: cgImage.width, height: cgImage.height))
+            return CursorOverlayState(
+                image: cached,
+                hotSpot: hotSpot,
+                pixelSize: pixelSize,
+                isTextInsertionCursor: isTextInsertionCursor
+            )
         }
 
         let imageRect = CGRect(x: 0, y: 0, width: cgImage.width, height: cgImage.height)
         let ciImage = CIImage(cgImage: cgImage).cropped(to: imageRect)
         cursorOverlayCacheKey = key
         cursorOverlayCacheImage = ciImage
-        return (ciImage, hotSpot, CGSize(width: cgImage.width, height: cgImage.height))
+        return CursorOverlayState(
+            image: ciImage,
+            hotSpot: hotSpot,
+            pixelSize: pixelSize,
+            isTextInsertionCursor: isTextInsertionCursor
+        )
+    }
+
+    private func isTextInsertionCursor(
+        _ cursor: NSCursor,
+        pixelSize: CGSize,
+        hotSpot: CGPoint
+    ) -> Bool {
+        let textCursors = [
+            NSCursor.iBeam,
+            NSCursor.iBeamCursorForVerticalLayout
+        ]
+        if textCursors.contains(where: { $0 === cursor || $0.isEqual(cursor) }) {
+            return true
+        }
+
+        return textCursors.contains { candidate in
+            var proposedRect = CGRect(origin: .zero, size: candidate.image.size)
+            guard let cgImage = candidate.image.cgImage(forProposedRect: &proposedRect, context: nil, hints: nil) else {
+                return false
+            }
+            let candidateSize = CGSize(width: cgImage.width, height: cgImage.height)
+            return candidateSize == pixelSize && candidate.hotSpot == hotSpot
+        }
     }
 
     private func clickRingStampImage(progress: CGFloat) -> CIImage? {
@@ -1372,6 +1427,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         lastClickTimestamp = nil
         lastClickReleaseTimestamp = nil
         lastClickScreenLocation = nil
+        lastClickWasTextInsertion = false
         clickRingStampCacheKey = nil
         clickRingStampCacheImage = nil
         cursorOverlayCacheKey = nil

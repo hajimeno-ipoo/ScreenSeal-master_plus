@@ -248,6 +248,19 @@ final class PointerTrackingService {
         return value as? String
     }
 
+    private func attributeBool(_ name: CFString, element: AXUIElement) -> Bool? {
+        var value: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(element, name, &value)
+        guard result == .success else { return nil }
+        return value as? Bool
+    }
+
+    private func hasAttribute(_ name: CFString, element: AXUIElement) -> Bool {
+        var value: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(element, name, &value)
+        return result == .success && value != nil
+    }
+
     private func hasURLAttribute(_ element: AXUIElement) -> Bool {
         var value: CFTypeRef?
         let result = AXUIElementCopyAttributeValue(element, kAXURLAttribute as CFString, &value)
@@ -356,7 +369,97 @@ final class PointerTrackingService {
             return false
         }
 
+        if AXIsProcessTrusted(),
+           let element = element(at: location) {
+            if isMenuBarInteraction(location: location, element: element) {
+                return false
+            }
+
+            var pid: pid_t = 0
+            AXUIElementGetPid(element, &pid)
+            if pid == ProcessInfo.processInfo.processIdentifier {
+                return false
+            }
+
+            if let frontmostApp = NSWorkspace.shared.frontmostApplication,
+               let elementApp = NSRunningApplication(processIdentifier: pid),
+               belongsToFrontmostApp(elementApp: elementApp, frontmostApp: frontmostApp),
+               isTextEditingElement(element) {
+                return false
+            }
+        } else if isTextInsertionCursorActive() {
+            return false
+        }
+
         return true
+    }
+
+    private func element(at location: CGPoint) -> AXUIElement? {
+        let systemWide = AXUIElementCreateSystemWide()
+        var element: AXUIElement?
+        let result = AXUIElementCopyElementAtPosition(systemWide, Float(location.x), Float(location.y), &element)
+        guard result == .success else { return nil }
+        return element
+    }
+
+    private func isTextEditingElement(_ element: AXUIElement) -> Bool {
+        var current: AXUIElement? = element
+        for _ in 0..<8 {
+            guard let target = current else { return false }
+            if hasTextEditingTraits(target) {
+                return true
+            }
+            current = parentElement(of: target)
+        }
+        return false
+    }
+
+    private func hasTextEditingTraits(_ element: AXUIElement) -> Bool {
+        let role = attributeString(kAXRoleAttribute as CFString, element: element)
+        let textRoles = ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"]
+        if let role, textRoles.contains(role) {
+            return true
+        }
+
+        if attributeBool("AXEditable" as CFString, element: element) == true {
+            return true
+        }
+
+        if role == "AXWebArea",
+           hasAttribute(kAXSelectedTextAttribute as CFString, element: element) ||
+           hasAttribute(kAXInsertionPointLineNumberAttribute as CFString, element: element) {
+            return true
+        }
+
+        if hasAttribute(kAXSelectedTextAttribute as CFString, element: element) ||
+           hasAttribute(kAXInsertionPointLineNumberAttribute as CFString, element: element) {
+            return true
+        }
+
+        return false
+    }
+
+    private func isTextInsertionCursorActive() -> Bool {
+        let cursorCandidates = [
+            currentSystemCursorForClickRing(),
+            NSCursor.current
+        ].compactMap { $0 }
+        let insertionCursors = [
+            NSCursor.iBeam,
+            NSCursor.iBeamCursorForVerticalLayout
+        ]
+
+        return cursorCandidates.contains { candidate in
+            insertionCursors.contains { $0 === candidate }
+        }
+    }
+
+    private func currentSystemCursorForClickRing() -> NSCursor? {
+        let selector = NSSelectorFromString("currentSystemCursor")
+        guard NSCursor.responds(to: selector),
+              let unmanaged = NSCursor.perform(selector)
+        else { return nil }
+        return unmanaged.takeUnretainedValue() as? NSCursor
     }
 
     private func handleMouseUp() {
