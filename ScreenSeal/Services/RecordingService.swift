@@ -56,6 +56,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
     private var currentZoomCenter: CGPoint?
     private var lastZoomUpdateTimestamp: CFTimeInterval = 0
     private var hasAppendedVideoFrame = false
+    private var lastAppendedVideoPTS: CMTime?
     private var lastHandledClickEventID: UInt64 = 0
     private var lastClickTimestamp: CFTimeInterval?
     private var lastClickScreenLocation: CGPoint?
@@ -63,6 +64,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
     private var clickRingStampCacheImage: CIImage?
     private var isFinalizing = false
     private var remainingWindowDebugLogs = 0
+    private let audioVideoLeadToleranceFrames: Int64 = 3
 
     private struct ClickRingStampKey: Equatable {
         let progressBucket: Int
@@ -377,6 +379,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             sessionStarted = true
             lastZoomUpdateTimestamp = sampleTimestamp.isFinite ? sampleTimestamp : 0
             hasAppendedVideoFrame = false
+            lastAppendedVideoPTS = nil
             currentZoomScale = zoomProfile.zoomOutScale
         }
         guard let pixelBufferPool = pixelBufferAdaptor.pixelBufferPool else {
@@ -465,6 +468,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         }
 
         hasAppendedVideoFrame = true
+        lastAppendedVideoPTS = presentationTime
         return true
     }
 
@@ -473,6 +477,17 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         guard let writer, let audioInput else { return }
         guard writer.status == .writing else { return }
         guard audioInput.isReadyForMoreMediaData else { return }
+        let audioPTS = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+        if let lastVideoPTS = lastAppendedVideoPTS {
+            let tolerance = CMTime(
+                value: audioVideoLeadToleranceFrames,
+                timescale: CMTimeScale(max(1, zoomProfile.fps))
+            )
+            let maxAllowedAudioPTS = CMTimeAdd(lastVideoPTS, tolerance)
+            if CMTimeCompare(audioPTS, maxAllowedAudioPTS) == 1 {
+                return
+            }
+        }
 
         if !audioInput.append(sampleBuffer), writer.status == .failed {
             recordingLogger.error("Audio append failed: \(writer.error?.localizedDescription ?? "unknown")")
@@ -1176,6 +1191,9 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
                 try? FileManager.default.removeItem(at: outputURL)
                 throw RecordingError.noVideoFrame
             }
+            if let writer, let lastVideoPTS = lastAppendedVideoPTS, lastVideoPTS.isValid {
+                writer.endSession(atSourceTime: lastVideoPTS)
+            }
             videoInput?.markAsFinished()
             audioInput?.markAsFinished()
             try await finishWriting()
@@ -1211,6 +1229,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         currentZoomCenter = nil
         lastZoomUpdateTimestamp = 0
         hasAppendedVideoFrame = false
+        lastAppendedVideoPTS = nil
         lastHandledClickEventID = 0
         lastClickTimestamp = nil
         lastClickScreenLocation = nil
