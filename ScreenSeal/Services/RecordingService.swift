@@ -24,9 +24,10 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
 
     private let outputResolution = CGSize(width: 1920, height: 1080)
     private let idleCameraScale: CGFloat = 0.6
+    private let idleFollowMinimumScale: CGFloat = 1.15
     private let idlePanDeadzoneRatio: CGFloat = 0.20
     private let zoomPanDeadzoneRatio: CGFloat = 0.08
-    private let idlePanDurationMultiplier: CGFloat = 2.4
+    private let idlePanDurationMultiplier: CGFloat = 1.8
     private let followCursorCameraEnabled: Bool
     private let cursorHighlightEnabled: Bool
     private let clickRingEnabled: Bool
@@ -739,7 +740,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
 
         let effectiveScale = shouldZoom
             ? max(0.01, currentZoomScale)
-            : max(0.01, currentZoomScale * idleCameraScale)
+            : max(idleFollowMinimumScale, currentZoomScale * idleCameraScale)
         let zoomedWidth = min(baseCropSize.width / effectiveScale, extent.width)
         let zoomedHeight = min(baseCropSize.height / effectiveScale, extent.height)
         let cropCenterX = zoomedWidth >= extent.width ? extent.midX : zoomCenter.x
