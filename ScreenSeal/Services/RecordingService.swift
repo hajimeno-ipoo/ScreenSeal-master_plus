@@ -33,7 +33,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
     private let clickRingEnabled: Bool
     private let highlightRadius: CGFloat = 100
     private let highlightColor: NSColor
-    private let clickRingDuration: CFTimeInterval = 0.9
+    private let clickRingDuration: CFTimeInterval = 0.3
     private let clickRingBaseRadius: CGFloat = 20
     private let clickRingMaxRadius: CGFloat = 90
     private let clickRingSpacing: CGFloat = 30
@@ -60,6 +60,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
     private var lastAppendedVideoPTS: CMTime?
     private var lastHandledClickEventID: UInt64 = 0
     private var lastClickTimestamp: CFTimeInterval?
+    private var lastClickReleaseTimestamp: CFTimeInterval?
     private var lastClickScreenLocation: CGPoint?
     private var clickRingStampCacheKey: ClickRingStampKey?
     private var clickRingStampCacheImage: CIImage?
@@ -275,6 +276,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             self.hasAppendedVideoFrame = false
             self.lastHandledClickEventID = 0
             self.lastClickTimestamp = nil
+            self.lastClickReleaseTimestamp = nil
             self.lastClickScreenLocation = nil
             self.lastLivePreviewTimestamp = -.greatestFiniteMagnitude
 
@@ -819,9 +821,11 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             lastHandledClickEventID = pointer.lastClickEventID
             if let clickLocation = pointer.lastClickLocation {
                 lastClickTimestamp = now
+                lastClickReleaseTimestamp = nil
                 lastClickScreenLocation = clickLocation
             } else {
                 lastClickTimestamp = nil
+                lastClickReleaseTimestamp = nil
                 lastClickScreenLocation = nil
             }
         }
@@ -829,13 +833,24 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         var output = image
         let outputRect = CGRect(origin: .zero, size: outputSize)
         var ringProgress: CGFloat?
-        if clickRingEnabled, self.lastClickTimestamp != nil {
-            let holdProgress: CGFloat = 1.0
+        if clickRingEnabled, let lastClickTimestamp = self.lastClickTimestamp {
             if pointer.isPrimaryButtonPressed {
-                ringProgress = holdProgress
+                ringProgress = 0
             } else {
-                self.lastClickTimestamp = nil
-                self.lastClickScreenLocation = nil
+                if self.lastClickReleaseTimestamp == nil {
+                    self.lastClickReleaseTimestamp = max(now, lastClickTimestamp)
+                }
+                if let releaseTimestamp = self.lastClickReleaseTimestamp {
+                    let elapsed = max(0, now - releaseTimestamp)
+                    let progress = min(max(elapsed / clickRingDuration, 0), 1)
+                    if progress < 1 {
+                        ringProgress = CGFloat(progress)
+                    } else {
+                        self.lastClickTimestamp = nil
+                        self.lastClickReleaseTimestamp = nil
+                        self.lastClickScreenLocation = nil
+                    }
+                }
             }
         }
         let isRingActive = (ringProgress != nil)
@@ -1260,6 +1275,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         lastAppendedVideoPTS = nil
         lastHandledClickEventID = 0
         lastClickTimestamp = nil
+        lastClickReleaseTimestamp = nil
         lastClickScreenLocation = nil
         clickRingStampCacheKey = nil
         clickRingStampCacheImage = nil
