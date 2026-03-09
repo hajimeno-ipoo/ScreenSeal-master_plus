@@ -300,7 +300,8 @@ final class ScreenshotService {
 
 @available(macOS 14.0, *)
 struct ScrollCaptureResult {
-    let outputURL: URL
+    let archiveURL: URL
+    let previewImageURL: URL
 }
 
 @available(macOS 14.0, *)
@@ -410,12 +411,18 @@ final class ScrollCaptureService {
         }
 
         let stitchedImage = try Self.stitchedImage(from: segments)
-        try ScreenshotService.savePNG(stitchedImage, to: workingDirectory.appendingPathComponent("stitched.png"))
+        let stitchedURL = workingDirectory.appendingPathComponent("stitched.png")
+        try ScreenshotService.savePNG(stitchedImage, to: stitchedURL)
+        let previewImageURL = try Self.makePreviewImageURL(sessionIdentifier: sessionIdentifier)
+        if FileManager.default.fileExists(atPath: previewImageURL.path) {
+            try FileManager.default.removeItem(at: previewImageURL)
+        }
+        try FileManager.default.copyItem(at: stitchedURL, to: previewImageURL)
 
         let archiveURL = try Self.makeArchiveURL(sessionIdentifier: sessionIdentifier)
         try Self.createArchive(from: workingDirectory, to: archiveURL)
         scrollCaptureLogger.info("Scroll capture saved: \(archiveURL.path)")
-        return ScrollCaptureResult(outputURL: archiveURL)
+        return ScrollCaptureResult(archiveURL: archiveURL, previewImageURL: previewImageURL)
     }
 
     private static func makeWorkingDirectory(sessionIdentifier: String) throws -> URL {
@@ -431,6 +438,11 @@ final class ScrollCaptureService {
     private static func makeArchiveURL(sessionIdentifier: String) throws -> URL {
         let directory = try ScreenshotService.makeOutputDirectory()
         return directory.appendingPathComponent("ScreenSeal_plus-scroll-\(sessionIdentifier).zip")
+    }
+
+    private static func makePreviewImageURL(sessionIdentifier: String) throws -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("ScreenSeal_plus-scroll-preview-\(sessionIdentifier).png")
     }
 
     private static func stepImageURL(in directory: URL, stepIndex: Int) -> URL {

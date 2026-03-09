@@ -25,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSStatusBar.system.removeStatusItem(recordingControlItem)
         }
         windowManager.stopScrollCapture()
+        windowManager.cleanupTemporaryScrollPreviewArtifacts()
         windowManager.cancelRecordingCountdown()
         windowManager.stopRecording()
         windowManager.removeAllWindows()

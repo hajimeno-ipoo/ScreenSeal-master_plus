@@ -1332,6 +1332,7 @@ final class WindowManager: ObservableObject {
     private var livePreviewPinned: Bool
     private var livePreviewSavedFrame: CGRect?
     private var scrollCaptureStopRequested = false
+    private var temporaryScrollPreviewURLs: Set<URL> = []
 
     private var recordingServiceRef: AnyObject?
 
@@ -1470,6 +1471,7 @@ final class WindowManager: ObservableObject {
         dismissRegionRecordingOverlay()
         dismissScreenshotPreview()
         dismissRecordingLivePreview()
+        cleanupTemporaryScrollPreviewArtifacts()
         regionSelectionCoordinator.dismiss()
         if let observer = wakeObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(observer)
@@ -1676,8 +1678,24 @@ final class WindowManager: ObservableObject {
                     await MainActor.run {
                         self.scrollCaptureStopRequested = false
                         self.screenshotStatusIsFailure = false
-                        self.screenshotStatusMessage = "Scroll Capture saved: \(result.outputURL.lastPathComponent)"
-                        self.openScreenshot(at: result.outputURL)
+                        self.temporaryScrollPreviewURLs.insert(result.previewImageURL)
+                        self.screenshotStatusMessage = "Scroll Capture saved: \(result.archiveURL.lastPathComponent)"
+                        if let previewImage = self.scrollCapturePreviewImage(for: result.previewImageURL) {
+                            self.showCapturePreview(
+                                image: previewImage,
+                                target: target,
+                                title: "Scroll Capture Saved",
+                                subtitle: "Click to open in \(self.screenshotOpenAction.rawValue)"
+                            ) { [weak self] in
+                                guard let self else { return }
+                                switch self.screenshotOpenAction {
+                                case .preview:
+                                    self.openScreenshot(at: result.previewImageURL)
+                                case .finder:
+                                    self.openScreenshot(at: result.archiveURL)
+                                }
+                            }
+                        }
                     }
                     return
                 }
@@ -2165,6 +2183,45 @@ final class WindowManager: ObservableObject {
         }
     }
 
+    private func showCapturePreview(
+        image: CGImage,
+        target: ResolvedRecordingTarget,
+        title: String,
+        subtitle: String,
+        onClick: @escaping () -> Void
+    ) {
+        guard let screenFrame = previewScreenFrame(for: target) else {
+            return
+        }
+        screenshotPreviewDismissTask?.cancel()
+        dismissScreenshotPreview()
+
+        let window = ScreenshotPreviewWindow(
+            image: image,
+            title: title,
+            subtitle: subtitle,
+            frame: ScreenshotPreviewWindow.frame(on: screenFrame)
+        )
+        window.onClick { [weak self] in
+            onClick()
+            self?.dismissScreenshotPreview()
+        }
+        screenshotPreviewWindow = window
+        window.orderFrontRegardless()
+
+        screenshotPreviewDismissTask = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: Self.screenshotPreviewDurationNanoseconds)
+            } catch {
+                return
+            }
+            guard let self else { return }
+            await MainActor.run {
+                self.dismissScreenshotPreview()
+            }
+        }
+    }
+
     @available(macOS 15.0, *)
     private func recordingPreviewImage(for url: URL) async throws -> CGImage {
         let asset = AVURLAsset(url: url)
@@ -2192,6 +2249,20 @@ final class WindowManager: ObservableObject {
         screenshotPreviewWindow = nil
         screenshotPreviewDismissTask?.cancel()
         screenshotPreviewDismissTask = nil
+    }
+
+    private func scrollCapturePreviewImage(for url: URL) -> CGImage? {
+        guard let image = NSImage(contentsOf: url) else {
+            return nil
+        }
+        return image.cgImage(forProposedRect: nil, context: nil, hints: nil)
+    }
+
+    func cleanupTemporaryScrollPreviewArtifacts() {
+        for url in temporaryScrollPreviewURLs {
+            try? FileManager.default.removeItem(at: url)
+        }
+        temporaryScrollPreviewURLs.removeAll()
     }
 
     private func livePreviewAspectRatio(for target: ResolvedRecordingTarget) -> CGFloat {
@@ -2241,10 +2312,6 @@ final class WindowManager: ObservableObject {
         case .finder:
             NSWorkspace.shared.activateFileViewerSelecting([url])
         case .preview:
-            if url.pathExtension.lowercased() == "zip" {
-                NSWorkspace.shared.activateFileViewerSelecting([url])
-                return
-            }
             let configuration = NSWorkspace.OpenConfiguration()
             guard let applicationURL = preferredApplicationURL(
                 bundleIdentifier: Self.previewBundleIdentifier,
