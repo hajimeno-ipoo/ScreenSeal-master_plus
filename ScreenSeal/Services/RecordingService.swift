@@ -53,12 +53,23 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
     private let zoomProfile: ZoomProfile
     private var currentZoomScale: CGFloat
     private var currentZoomCenter: CGPoint?
-    private var lastZoomUpdateTimestamp: CFTimeInterval = CACurrentMediaTime()
+    private var lastZoomUpdateTimestamp: CFTimeInterval = 0
+    private var hasAppendedVideoFrame = false
     private var lastHandledClickEventID: UInt64 = 0
     private var lastClickTimestamp: CFTimeInterval?
     private var lastClickScreenLocation: CGPoint?
+    private var clickRingStampCacheKey: ClickRingStampKey?
+    private var clickRingStampCacheImage: CIImage?
     private var isFinalizing = false
     private var remainingWindowDebugLogs = 0
+
+    private struct ClickRingStampKey: Equatable {
+        let progressBucket: Int
+        let red: Int
+        let green: Int
+        let blue: Int
+        let alpha: Int
+    }
 
     private(set) var state: RecordingState = .idle {
         didSet { onStateChange?(state) }
@@ -81,8 +92,10 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         self.zoomProfile = ZoomProfile(
             zoomInScale: CGFloat(zoomScale),
             zoomOutScale: standardZoomProfile.zoomOutScale,
-            easingDuration: standardZoomProfile.easingDuration,
-            cursorFollowDuration: standardZoomProfile.cursorFollowDuration,
+            zoomInDuration: standardZoomProfile.zoomInDuration,
+            zoomOutDuration: standardZoomProfile.zoomOutDuration,
+            cursorFollowInDuration: standardZoomProfile.cursorFollowInDuration,
+            cursorFollowOutDuration: standardZoomProfile.cursorFollowOutDuration,
             fps: standardZoomProfile.fps
         )
         self.currentZoomScale = standardZoomProfile.zoomOutScale
@@ -136,8 +149,13 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
                 let scaleFactor = await MainActor.run {
                     Self.screen(forDisplayID: display.displayID)?.backingScaleFactor ?? 2.0
                 }
-                config.width = Int(CGFloat(display.width) * scaleFactor)
-                config.height = Int(CGFloat(display.height) * scaleFactor)
+                let nativeSize = CGSize(
+                    width: CGFloat(display.width) * scaleFactor,
+                    height: CGFloat(display.height) * scaleFactor
+                )
+                let captureSize = Self.fittedSize(nativeSize, maxSize: outputResolution)
+                config.width = max(1, Int(captureSize.width.rounded()))
+                config.height = max(1, Int(captureSize.height.rounded()))
                 filter = SCContentFilter(
                     display: display,
                     excludingApplications: excludedApplications,
@@ -165,8 +183,13 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
                 let includedWindowIDs = Set(overlayWindowIDs).union([windowID])
                 let includedWindows = content.windows.filter { includedWindowIDs.contains($0.windowID) }
                 config.sourceRect = localRect
-                config.width = max(1, Int(localRect.width * scaleFactor))
-                config.height = max(1, Int(localRect.height * scaleFactor))
+                let windowNativeSize = CGSize(
+                    width: localRect.width * scaleFactor,
+                    height: localRect.height * scaleFactor
+                )
+                let windowCaptureSize = Self.fittedSize(windowNativeSize, maxSize: outputResolution)
+                config.width = max(1, Int(windowCaptureSize.width.rounded()))
+                config.height = max(1, Int(windowCaptureSize.height.rounded()))
                 filter = SCContentFilter(display: display, including: includedWindows)
                 captureFrame = windowFrame
 
@@ -190,8 +213,13 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
                     Self.screen(forDisplayID: selection.displayID)?.backingScaleFactor ?? 2.0
                 }
                 config.sourceRect = localRect
-                config.width = max(1, Int(localRect.width * scaleFactor))
-                config.height = max(1, Int(localRect.height * scaleFactor))
+                let regionNativeSize = CGSize(
+                    width: localRect.width * scaleFactor,
+                    height: localRect.height * scaleFactor
+                )
+                let regionCaptureSize = Self.fittedSize(regionNativeSize, maxSize: outputResolution)
+                config.width = max(1, Int(regionCaptureSize.width.rounded()))
+                config.height = max(1, Int(regionCaptureSize.height.rounded()))
                 filter = SCContentFilter(
                     display: display,
                     excludingApplications: excludedApplications,
@@ -204,9 +232,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             let writerSize: CGSize
             switch target {
             case .display:
-                writerSize = followCursorCameraEnabled
-                    ? outputResolution
-                    : CGSize(width: config.width, height: config.height)
+                writerSize = CGSize(width: config.width, height: config.height)
             case .window, .region:
                 writerSize = CGSize(width: config.width, height: config.height)
             }
@@ -236,7 +262,8 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             self.sessionStarted = false
             self.currentZoomScale = zoomProfile.zoomOutScale
             self.currentZoomCenter = nil
-            self.lastZoomUpdateTimestamp = CACurrentMediaTime()
+            self.lastZoomUpdateTimestamp = 0
+            self.hasAppendedVideoFrame = false
             self.lastHandledClickEventID = 0
             self.lastClickTimestamp = nil
             self.lastClickScreenLocation = nil
@@ -337,46 +364,88 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
     }
 
     private func appendVideoSampleBuffer(_ sampleBuffer: CMSampleBuffer) {
-        guard let writer, let videoInput, let pixelBufferAdaptor else { return }
+        guard let writer, let pixelBufferAdaptor else { return }
         guard writer.status == .unknown || writer.status == .writing else { return }
         guard let imageBuffer = sampleBuffer.imageBuffer else { return }
 
         let presentationTime = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+        let sampleTimestamp = CMTimeGetSeconds(presentationTime)
         if !sessionStarted {
             writer.startWriting()
             writer.startSession(atSourceTime: presentationTime)
             sessionStarted = true
-            lastZoomUpdateTimestamp = CACurrentMediaTime()
+            lastZoomUpdateTimestamp = sampleTimestamp.isFinite ? sampleTimestamp : 0
+            hasAppendedVideoFrame = false
             currentZoomScale = zoomProfile.zoomOutScale
         }
-
-        guard videoInput.isReadyForMoreMediaData else { return }
         guard let pixelBufferPool = pixelBufferAdaptor.pixelBufferPool else {
             recordingLogger.error("Pixel buffer pool is unavailable")
             return
         }
 
+        let sourceImage = normalizedSourceImage(from: sampleBuffer, imageBuffer: imageBuffer)
+        let pointer = pointerTrackingService.snapshot
+        let outputWidth = (pixelBufferAdaptor.sourcePixelBufferAttributes?[kCVPixelBufferWidthKey as String] as? Int)
+            ?? CVPixelBufferGetWidth(imageBuffer)
+        let outputHeight = (pixelBufferAdaptor.sourcePixelBufferAttributes?[kCVPixelBufferHeightKey as String] as? Int)
+            ?? CVPixelBufferGetHeight(imageBuffer)
+        let outputSize = CGSize(
+            width: outputWidth,
+            height: outputHeight
+        )
+
+        if !appendRenderedVideoFrame(
+            sourceImage: sourceImage,
+            pointer: pointer,
+            outputSize: outputSize,
+            presentationTime: presentationTime,
+            sampleTime: sampleTimestamp,
+            pixelBufferPool: pixelBufferPool,
+            debugSampleBuffer: sampleBuffer
+        ) {
+            if writer.status == .failed {
+                recordingLogger.error("Video append failed: \(writer.error?.localizedDescription ?? "unknown")")
+            }
+            return
+        }
+    }
+
+    private func appendRenderedVideoFrame(
+        sourceImage: CIImage,
+        pointer: PointerSnapshot,
+        outputSize: CGSize,
+        presentationTime: CMTime,
+        sampleTime: CFTimeInterval,
+        pixelBufferPool: CVPixelBufferPool,
+        debugSampleBuffer: CMSampleBuffer?
+    ) -> Bool {
+        guard let videoInput, let pixelBufferAdaptor else { return false }
+        guard videoInput.isReadyForMoreMediaData else { return false }
+
         var outputPixelBuffer: CVPixelBuffer?
         let status = CVPixelBufferPoolCreatePixelBuffer(nil, pixelBufferPool, &outputPixelBuffer)
         guard status == kCVReturnSuccess, let outputPixelBuffer else {
             recordingLogger.error("Failed to create output pixel buffer")
-            return
+            return false
         }
 
-        let sourceImage = normalizedSourceImage(from: sampleBuffer, imageBuffer: imageBuffer)
-        let pointer = pointerTrackingService.snapshot
-        let outputSize = CGSize(
-            width: CVPixelBufferGetWidth(outputPixelBuffer),
-            height: CVPixelBufferGetHeight(outputPixelBuffer)
+        let transformed = applyRecordingTransform(
+            to: sourceImage,
+            outputSize: outputSize,
+            pointer: pointer,
+            sampleTime: sampleTime
         )
-        let transformed = applyRecordingTransform(to: sourceImage, outputSize: outputSize, pointer: pointer)
-        let now = CACurrentMediaTime()
-        logWindowDebugFrameIfNeeded(
-            sampleBuffer: sampleBuffer,
-            sourceImage: sourceImage,
-            transformed: transformed,
-            outputSize: outputSize
-        )
+
+        if let debugSampleBuffer {
+            logWindowDebugFrameIfNeeded(
+                sampleBuffer: debugSampleBuffer,
+                sourceImage: sourceImage,
+                transformed: transformed,
+                outputSize: outputSize
+            )
+        }
+
+        let effectTime = sampleTime.isFinite ? sampleTime : CACurrentMediaTime()
         let effectedImage = applyCursorEffects(
             to: transformed.image,
             outputSize: outputSize,
@@ -385,14 +454,17 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             clickPoint: transformed.clickPoint,
             sourceRect: transformed.sourceRect,
             imageExtent: transformed.imageExtent,
-            now: now
+            now: effectTime
         )
         let renderBounds = CGRect(origin: .zero, size: outputSize)
         ciContext.render(effectedImage, to: outputPixelBuffer, bounds: renderBounds, colorSpace: CGColorSpaceCreateDeviceRGB())
 
-        if !pixelBufferAdaptor.append(outputPixelBuffer, withPresentationTime: presentationTime), writer.status == .failed {
-            recordingLogger.error("Video append failed: \(writer.error?.localizedDescription ?? "unknown")")
+        guard pixelBufferAdaptor.append(outputPixelBuffer, withPresentationTime: presentationTime) else {
+            return false
         }
+
+        hasAppendedVideoFrame = true
+        return true
     }
 
     private func appendAudioSampleBuffer(_ sampleBuffer: CMSampleBuffer) {
@@ -514,7 +586,12 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         imageExtent: CGRect
     )
 
-    private func applyRecordingTransform(to image: CIImage, outputSize: CGSize, pointer: PointerSnapshot) -> TransformResult {
+    private func applyRecordingTransform(
+        to image: CIImage,
+        outputSize: CGSize,
+        pointer: PointerSnapshot,
+        sampleTime: CFTimeInterval
+    ) -> TransformResult {
         if case .window = activeTarget, !pointer.isZoomActive, !followCursorCameraEnabled {
             let extent = image.extent
             let cursor = outputCursorPoint(for: pointer.cursorLocation, imageExtent: extent, sourceRect: extent, outputSize: outputSize)
@@ -525,12 +602,27 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         }
 
         if followCursorCameraEnabled {
-            return applyFollowCursorCamera(to: image, outputSize: outputSize, pointer: pointer)
+            return applyFollowCursorCamera(
+                to: image,
+                outputSize: outputSize,
+                pointer: pointer,
+                sampleTime: sampleTime
+            )
         }
-        return applyClassicRecordingZoom(to: image, outputSize: outputSize, pointer: pointer)
+        return applyClassicRecordingZoom(
+            to: image,
+            outputSize: outputSize,
+            pointer: pointer,
+            sampleTime: sampleTime
+        )
     }
 
-    private func applyClassicRecordingZoom(to image: CIImage, outputSize: CGSize, pointer: PointerSnapshot) -> TransformResult {
+    private func applyClassicRecordingZoom(
+        to image: CIImage,
+        outputSize: CGSize,
+        pointer: PointerSnapshot,
+        sampleTime: CFTimeInterval
+    ) -> TransformResult {
         let extent = image.extent
         guard !captureDisplayFrame.isEmpty, outputSize.width > 0, outputSize.height > 0 else {
             return (image, nil, nil, extent, extent)
@@ -542,16 +634,14 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             ? zoomProfile.zoomInScale
             : zoomProfile.zoomOutScale
 
-        let now = CACurrentMediaTime()
-        let elapsed = max(0, now - lastZoomUpdateTimestamp)
-        lastZoomUpdateTimestamp = now
+        let elapsed = zoomElapsed(for: sampleTime)
+        let zoomDuration = shouldZoom ? zoomProfile.zoomInDuration : zoomProfile.zoomOutDuration
         currentZoomScale = smoothValue(
             currentZoomScale,
             toward: targetScale,
             elapsed: elapsed,
-            duration: zoomProfile.easingDuration
+            duration: zoomDuration
         )
-        let blendProgress = zoomBlendProgress(for: currentZoomScale, isEntering: shouldZoom)
 
         if shouldZoom {
             let initialCenter = currentZoomCenter ?? pointer.zoomAnchorLocation.map {
@@ -561,11 +651,12 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
                 initialCenter,
                 toward: convertScreenPointToImagePoint(targetLocation, imageExtent: extent),
                 elapsed: elapsed,
-                duration: zoomProfile.cursorFollowDuration
+                duration: zoomProfile.cursorFollowInDuration
             )
         }
 
-        guard blendProgress > 0.001 || shouldZoom else {
+        let effectiveScale = max(zoomProfile.zoomOutScale, currentZoomScale)
+        guard shouldZoom || effectiveScale > (zoomProfile.zoomOutScale + 0.001) else {
             currentZoomCenter = nil
             let cursor = outputCursorPoint(for: targetLocation, imageExtent: extent, sourceRect: extent, outputSize: outputSize)
             let clickPoint = pointer.lastClickLocation.flatMap {
@@ -573,37 +664,30 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             }
             return (image, cursor, clickPoint, extent, extent)
         }
-        guard let zoomCenter = currentZoomCenter else { return (image, nil, nil, extent, extent) }
+        guard let zoomCenter = currentZoomCenter else {
+            return (image, nil, nil, extent, extent)
+        }
 
-        let zoomedWidth = extent.width / currentZoomScale
-        let zoomedHeight = extent.height / currentZoomScale
+        let zoomedWidth = extent.width / effectiveScale
+        let zoomedHeight = extent.height / effectiveScale
         let clampedX = min(max(zoomCenter.x - (zoomedWidth / 2), extent.minX), extent.maxX - zoomedWidth)
         let clampedY = min(max(zoomCenter.y - (zoomedHeight / 2), extent.minY), extent.maxY - zoomedHeight)
         let cropRect = CGRect(x: clampedX, y: clampedY, width: zoomedWidth, height: zoomedHeight)
 
-        let zoomedImage = renderedImage(image, from: cropRect, outputSize: outputSize)
-        let baseCursor = outputCursorPoint(for: targetLocation, imageExtent: extent, sourceRect: extent, outputSize: outputSize)
-        let zoomCursor = outputCursorPoint(for: targetLocation, imageExtent: extent, sourceRect: cropRect, outputSize: outputSize)
-        let baseClickPoint = pointer.lastClickLocation.flatMap {
-            outputCursorPoint(for: $0, imageExtent: extent, sourceRect: extent, outputSize: outputSize)
-        }
-        let zoomClickPoint = pointer.lastClickLocation.flatMap {
+        let transformedImage = renderedImage(image, from: cropRect, outputSize: outputSize)
+        let cursor = outputCursorPoint(for: targetLocation, imageExtent: extent, sourceRect: cropRect, outputSize: outputSize)
+        let clickPoint = pointer.lastClickLocation.flatMap {
             outputCursorPoint(for: $0, imageExtent: extent, sourceRect: cropRect, outputSize: outputSize)
         }
-
-        guard blendProgress < 0.999 else {
-            return (zoomedImage, zoomCursor, zoomClickPoint, cropRect, extent)
-        }
-
-        let baseImage = renderedImage(image, from: extent, outputSize: outputSize)
-        let blendedImage = imageByApplyingAlpha(zoomedImage, alpha: blendProgress)
-            .composited(over: baseImage)
-        let cursor = blendedPoint(from: baseCursor, to: zoomCursor, progress: blendProgress)
-        let clickPoint = blendedPoint(from: baseClickPoint, to: zoomClickPoint, progress: blendProgress)
-        return (blendedImage, cursor, clickPoint, cropRect, extent)
+        return (transformedImage, cursor, clickPoint, cropRect, extent)
     }
 
-    private func applyFollowCursorCamera(to image: CIImage, outputSize: CGSize, pointer: PointerSnapshot) -> TransformResult {
+    private func applyFollowCursorCamera(
+        to image: CIImage,
+        outputSize: CGSize,
+        pointer: PointerSnapshot,
+        sampleTime: CFTimeInterval
+    ) -> TransformResult {
         let extent = image.extent
         guard !captureDisplayFrame.isEmpty, outputSize.width > 0, outputSize.height > 0 else {
             return (image, nil, nil, extent, extent)
@@ -615,16 +699,14 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             ? zoomProfile.zoomInScale
             : zoomProfile.zoomOutScale
 
-        let now = CACurrentMediaTime()
-        let elapsed = max(0, now - lastZoomUpdateTimestamp)
-        lastZoomUpdateTimestamp = now
+        let elapsed = zoomElapsed(for: sampleTime)
+        let zoomDuration = shouldZoom ? zoomProfile.zoomInDuration : zoomProfile.zoomOutDuration
         currentZoomScale = smoothValue(
             currentZoomScale,
             toward: targetScale,
             elapsed: elapsed,
-            duration: zoomProfile.easingDuration
+            duration: zoomDuration
         )
-        let blendProgress = zoomBlendProgress(for: currentZoomScale, isEntering: shouldZoom)
 
         let cursorPoint = convertScreenPointToImagePoint(targetLocation, imageExtent: extent)
         let initialCenter = currentZoomCenter ?? pointer.zoomAnchorLocation.map {
@@ -642,8 +724,8 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             deadzoneSize: deadzoneSize
         )
         let panDuration: TimeInterval = shouldZoom
-            ? zoomProfile.cursorFollowDuration
-            : max(zoomProfile.cursorFollowDuration * idlePanDurationMultiplier, 0.24)
+            ? zoomProfile.cursorFollowInDuration
+            : max(zoomProfile.cursorFollowOutDuration * idlePanDurationMultiplier, 0.24)
         currentZoomCenter = smoothPoint(
             initialCenter,
             toward: targetCenter,
@@ -656,7 +738,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         }
 
         let effectiveScale = shouldZoom
-            ? currentZoomScale
+            ? max(0.01, currentZoomScale)
             : max(0.01, currentZoomScale * idleCameraScale)
         let zoomedWidth = min(baseCropSize.width / effectiveScale, extent.width)
         let zoomedHeight = min(baseCropSize.height / effectiveScale, extent.height)
@@ -671,39 +753,12 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         let clampedY = min(max(cropCenterY - (zoomedHeight / 2), minY), maxY)
         let cropRect = CGRect(x: clampedX, y: clampedY, width: zoomedWidth, height: zoomedHeight)
             .intersection(extent)
-
-        let zoomedImage = renderedImage(image, from: cropRect, outputSize: outputSize)
-        let zoomCursor = outputCursorPoint(for: targetLocation, imageExtent: extent, sourceRect: cropRect, outputSize: outputSize)
-        let zoomClickPoint = pointer.lastClickLocation.flatMap {
+        let transformedImage = renderedImage(image, from: cropRect, outputSize: outputSize)
+        let cursor = outputCursorPoint(for: targetLocation, imageExtent: extent, sourceRect: cropRect, outputSize: outputSize)
+        let clickPoint = pointer.lastClickLocation.flatMap {
             outputCursorPoint(for: $0, imageExtent: extent, sourceRect: cropRect, outputSize: outputSize)
         }
-
-        guard blendProgress < 0.999 else {
-            return (zoomedImage, zoomCursor, zoomClickPoint, cropRect, extent)
-        }
-
-        let idleEffectiveScale = max(0.01, zoomProfile.zoomOutScale * idleCameraScale)
-        let idleWidth = min(baseCropSize.width / idleEffectiveScale, extent.width)
-        let idleHeight = min(baseCropSize.height / idleEffectiveScale, extent.height)
-        let idleCenterX = idleWidth >= extent.width ? extent.midX : zoomCenter.x
-        let idleCenterY = idleHeight >= extent.height ? extent.midY : zoomCenter.y
-        let idleRect = CGRect(
-            x: min(max(idleCenterX - (idleWidth / 2), extent.minX), extent.maxX - idleWidth),
-            y: min(max(idleCenterY - (idleHeight / 2), extent.minY), extent.maxY - idleHeight),
-            width: idleWidth,
-            height: idleHeight
-        ).intersection(extent)
-
-        let baseImage = renderedImage(image, from: idleRect, outputSize: outputSize)
-        let baseCursor = outputCursorPoint(for: targetLocation, imageExtent: extent, sourceRect: idleRect, outputSize: outputSize)
-        let baseClickPoint = pointer.lastClickLocation.flatMap {
-            outputCursorPoint(for: $0, imageExtent: extent, sourceRect: idleRect, outputSize: outputSize)
-        }
-        let blendedImage = imageByApplyingAlpha(zoomedImage, alpha: blendProgress)
-            .composited(over: baseImage)
-        let cursor = blendedPoint(from: baseCursor, to: zoomCursor, progress: blendProgress)
-        let clickPoint = blendedPoint(from: baseClickPoint, to: zoomClickPoint, progress: blendProgress)
-        return (blendedImage, cursor, clickPoint, cropRect, extent)
+        return (transformedImage, cursor, clickPoint, cropRect, extent)
     }
 
     private func applyCursorEffects(
@@ -805,6 +860,17 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         center: CGPoint,
         progress: CGFloat
     ) -> CIImage? {
+        guard let stamp = clickRingStampImage(progress: progress) else { return nil }
+        let translated = stamp.transformed(
+            by: CGAffineTransform(
+                translationX: center.x - (stamp.extent.width / 2),
+                y: center.y - (stamp.extent.height / 2)
+            )
+        )
+        return translated.cropped(to: CGRect(origin: .zero, size: outputSize))
+    }
+
+    private func clickRingStampImage(progress: CGFloat) -> CIImage? {
         let fade = max(0.45, 1 - progress)
         let radius = clickRingBaseRadius + ((clickRingMaxRadius - clickRingBaseRadius) * progress)
         let innerRadius = max(1, radius - clickRingSpacing)
@@ -816,30 +882,43 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         )
         .cgColor
 
-        let width = max(1, Int(outputSize.width.rounded()))
-        let height = max(1, Int(outputSize.height.rounded()))
+        let ringNSColor = NSColor(cgColor: ringColor)?.usingColorSpace(.deviceRGB) ?? .white
+        let key = ClickRingStampKey(
+            progressBucket: Int((progress * 1000).rounded()),
+            red: Int((ringNSColor.redComponent * 1000).rounded()),
+            green: Int((ringNSColor.greenComponent * 1000).rounded()),
+            blue: Int((ringNSColor.blueComponent * 1000).rounded()),
+            alpha: Int((ringNSColor.alphaComponent * 1000).rounded())
+        )
+        if key == clickRingStampCacheKey, let cached = clickRingStampCacheImage {
+            return cached
+        }
+
+        let outerRadius = max(radius, innerRadius) + clickRingLineWidth + 2
+        let stampDiameter = max(1, Int((outerRadius * 2).rounded(.up)))
         let bitmapInfo = CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue
         guard let context = CGContext(
             data: nil,
-            width: width,
-            height: height,
+            width: stampDiameter,
+            height: stampDiameter,
             bitsPerComponent: 8,
             bytesPerRow: 0,
             space: CGColorSpaceCreateDeviceRGB(),
             bitmapInfo: bitmapInfo
         ) else { return nil }
 
-        context.clear(CGRect(x: 0, y: 0, width: width, height: height))
+        context.clear(CGRect(x: 0, y: 0, width: stampDiameter, height: stampDiameter))
         context.setShouldAntialias(true)
         context.setAllowsAntialiasing(true)
         context.setLineWidth(clickRingLineWidth)
         context.setBlendMode(.normal)
+        let centerPoint = CGPoint(x: CGFloat(stampDiameter) / 2, y: CGFloat(stampDiameter) / 2)
 
         context.setStrokeColor(ringColor)
         context.strokeEllipse(
             in: CGRect(
-                x: center.x - radius,
-                y: center.y - radius,
+                x: centerPoint.x - radius,
+                y: centerPoint.y - radius,
                 width: radius * 2,
                 height: radius * 2
             )
@@ -848,15 +927,19 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         context.setStrokeColor(ringColor)
         context.strokeEllipse(
             in: CGRect(
-                x: center.x - innerRadius,
-                y: center.y - innerRadius,
+                x: centerPoint.x - innerRadius,
+                y: centerPoint.y - innerRadius,
                 width: innerRadius * 2,
                 height: innerRadius * 2
             )
         )
 
         guard let cgImage = context.makeImage() else { return nil }
-        return CIImage(cgImage: cgImage).cropped(to: CGRect(origin: .zero, size: outputSize))
+        let stampRect = CGRect(x: 0, y: 0, width: stampDiameter, height: stampDiameter)
+        let stampImage = CIImage(cgImage: cgImage).cropped(to: stampRect)
+        clickRingStampCacheKey = key
+        clickRingStampCacheImage = stampImage
+        return stampImage
     }
 
     private static func normalizedColor(from color: CGColor, fallback: NSColor) -> NSColor {
@@ -873,6 +956,14 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             return screen
         }
         return NSScreen.screens.first(where: { $0.frame.intersects(frame) })
+    }
+
+    private static func fittedSize(_ size: CGSize, maxSize: CGSize) -> CGSize {
+        guard size.width > 0, size.height > 0, maxSize.width > 0, maxSize.height > 0 else {
+            return maxSize
+        }
+        let ratio = min(maxSize.width / size.width, maxSize.height / size.height, 1.0)
+        return CGSize(width: size.width * ratio, height: size.height * ratio)
     }
 
     private func applyPanDeadzone(
@@ -955,11 +1046,17 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         )
     }
 
-    private func zoomBlendProgress(for scale: CGFloat, isEntering: Bool) -> CGFloat {
-        let range = max(0.001, zoomProfile.zoomInScale - zoomProfile.zoomOutScale)
-        let progress = min(max((scale - zoomProfile.zoomOutScale) / range, 0), 1)
-        guard isEntering else { return progress }
-        return progress * progress
+    private func zoomElapsed(for sampleTime: CFTimeInterval) -> CFTimeInterval {
+        let timelineTime = sampleTime.isFinite ? sampleTime : CACurrentMediaTime()
+        guard lastZoomUpdateTimestamp > 0 else {
+            lastZoomUpdateTimestamp = timelineTime
+            return 0
+        }
+
+        let elapsed = max(0, timelineTime - lastZoomUpdateTimestamp)
+        lastZoomUpdateTimestamp = timelineTime
+        let frameDuration = 1.0 / Double(max(1, zoomProfile.fps))
+        return min(elapsed, frameDuration * 3.0)
     }
 
     private func renderedImage(_ image: CIImage, from sourceRect: CGRect, outputSize: CGSize) -> CIImage {
@@ -971,38 +1068,6 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
             y: outputSize.height / sourceRect.height
         ))
         return scaled.cropped(to: CGRect(origin: .zero, size: outputSize))
-    }
-
-    private func imageByApplyingAlpha(_ image: CIImage, alpha: CGFloat) -> CIImage {
-        let clampedAlpha = min(max(alpha, 0), 1)
-        guard clampedAlpha < 0.999 else { return image }
-        let filter = CIFilter(
-            name: "CIColorMatrix",
-            parameters: [
-                kCIInputImageKey: image,
-                "inputRVector": CIVector(x: 1, y: 0, z: 0, w: 0),
-                "inputGVector": CIVector(x: 0, y: 1, z: 0, w: 0),
-                "inputBVector": CIVector(x: 0, y: 0, z: 1, w: 0),
-                "inputAVector": CIVector(x: 0, y: 0, z: 0, w: clampedAlpha)
-            ]
-        )
-        return filter?.outputImage ?? image
-    }
-
-    private func blendedPoint(from start: CGPoint?, to end: CGPoint?, progress: CGFloat) -> CGPoint? {
-        switch (start, end) {
-        case let (.some(start), .some(end)):
-            return CGPoint(
-                x: start.x + ((end.x - start.x) * progress),
-                y: start.y + ((end.y - start.y) * progress)
-            )
-        case let (.some(start), .none):
-            return start
-        case let (.none, .some(end)):
-            return end
-        case (.none, .none):
-            return nil
-        }
     }
 
     private func makeWriter(
@@ -1105,6 +1170,11 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         await waitForMediaQueueDrain()
 
         if sessionStarted {
+            if !hasAppendedVideoFrame, let writer {
+                writer.cancelWriting()
+                try? FileManager.default.removeItem(at: outputURL)
+                throw RecordingError.noVideoFrame
+            }
             videoInput?.markAsFinished()
             audioInput?.markAsFinished()
             try await finishWriting()
@@ -1138,9 +1208,13 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         captureDisplayFrame = .zero
         currentZoomScale = zoomProfile.zoomOutScale
         currentZoomCenter = nil
+        lastZoomUpdateTimestamp = 0
+        hasAppendedVideoFrame = false
         lastHandledClickEventID = 0
         lastClickTimestamp = nil
         lastClickScreenLocation = nil
+        clickRingStampCacheKey = nil
+        clickRingStampCacheImage = nil
         isFinalizing = false
     }
 
