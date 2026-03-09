@@ -19,9 +19,11 @@ Place ScreenSeal_plus mosaic windows over passwords, personal data, or other sen
 - **Layout Presets** - Save and instantly recall window arrangements (multiple presets supported)
 - **Persistent Settings** - Mosaic type and intensity are preserved across app restarts
 - **Still Screenshot Capture** - Save a single PNG with mosaics applied from the menu bar
+- **Scroll Capture** - Auto-scroll a window or selected region, then save all captures as one ZIP
 - **Screen Recording** - Record a single display to MP4 from the menu bar
 - **Save Preview Overlay** - Show a thumbnail on screen after saving a screenshot or recording
 - **Open Action Selection** - Choose Finder / Preview for screenshots, Finder / QuickTime for recordings
+- **Screenshot Scale Selection** - Save screenshots as `original`, `2x`, `1x`, or `0.5x`
 - **Recording Countdown** - Shows a 3-second countdown before recording starts
 - **Recording Target Modes** - Capture a full display, a selected window, or a selected region
 - **Click Zoom** - While the primary mouse button is pressed, zooms toward the cursor (1.8x with smooth easing)
@@ -47,14 +49,20 @@ Download the latest `ScreenSeal_plus-macOS.zip` from the [Releases](https://gith
 6. Toggle window visibility from the menu bar
 7. Choose **Capture Mode**: **Record** or **Screenshot**
 8. Choose **Capture Target**: **Full Display**, **Window**, or **Select Region...**
-9. In **Record** mode, click **Start Recording** to save MP4 to `~/Movies/ScreenSeal_plus/`
-10. In **Screenshot** mode, click the side menu bar button or **Take Screenshot** to save PNG to `~/Pictures/ScreenSeal_plus/`
-11. Pick **Screenshot Click Action**: **Finder** or **Preview**
-12. Pick **Recording Click Action**: **Finder** or **QuickTime**
-13. After saving, a thumbnail preview appears on screen; click it to open the saved file with the selected app
-14. A 3-second countdown appears before recording starts
-15. Hold primary click while recording to trigger click-zoom
-16. Set **Cursor Highlight Color** and **Click Ring Color** before recording to customize the overlay look
+9. In **Screenshot** mode, choose **Screenshot Type**: **Single Screenshot** or **Scroll Capture**
+10. Choose **Screenshot Scale**: `original`, `2x`, `1x`, or `0.5x`
+11. In **Single Screenshot**, click **Take Screenshot** to save a PNG to `~/Pictures/ScreenSeal_plus/`
+12. In **Scroll Capture**, select **Window** or **Region**, click **Take Screenshot** to start, then click **Stop Scroll Capture** when you want to finish
+13. Scroll Capture saves a single ZIP to `~/Pictures/ScreenSeal_plus/`; the ZIP contains `step_*.png` and `stitched.png`
+14. **Screenshot Click Action** applies when you click the on-screen thumbnail:
+    `Preview` opens the saved PNG, or the temporary `stitched.png` for scroll capture
+    `Finder` reveals the saved PNG or ZIP
+15. In **Record** mode, click **Start Recording** to save MP4 to `~/Movies/ScreenSeal_plus/`
+16. Pick **Recording Click Action**: **Finder** or **QuickTime**
+17. After saving, a thumbnail preview appears on screen; click it to open the saved file with the selected app
+18. A 3-second countdown appears before recording starts, then the previously active app is brought back to the front so you can interact immediately
+19. Hold primary click while recording to trigger click-zoom
+20. Set **Cursor Highlight Color** and **Click Ring Color** before recording to customize the overlay look
 
 ## Build
 
