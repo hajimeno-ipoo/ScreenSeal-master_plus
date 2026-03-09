@@ -1880,7 +1880,12 @@ final class WindowManager: ObservableObject {
               app.processIdentifier != ProcessInfo.processInfo.processIdentifier else {
             return
         }
-        NSApp.yieldActivation(to: app)
+        guard !app.isTerminated,
+              let runningApp = NSRunningApplication(processIdentifier: app.processIdentifier),
+              runningApp.activationPolicy != .prohibited else {
+            return
+        }
+        _ = runningApp.activate(options: [.activateAllWindows])
     }
 
     private func showRegionRecordingOverlay(for selection: RecordingRegionSelection, editable: Bool) {
