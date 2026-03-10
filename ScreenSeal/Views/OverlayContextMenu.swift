@@ -2,13 +2,14 @@ import AppKit
 
 enum OverlayContextMenu {
     static func build(for configuration: OverlayConfiguration, window: OverlayWindow?) -> NSMenu {
+        let language = AppLanguage.resolved()
         let menu = NSMenu()
 
         // Mosaic type submenu
-        let typeItem = NSMenuItem(title: "Mosaic Type", action: nil, keyEquivalent: "")
+        let typeItem = NSMenuItem(title: AppStrings.text(.mosaicType, in: language), action: nil, keyEquivalent: "")
         let typeMenu = NSMenu()
         for type in MosaicType.allCases {
-            let item = NSMenuItem(title: type.rawValue, action: #selector(MenuActionTarget.selectMosaicType(_:)), keyEquivalent: "")
+            let item = NSMenuItem(title: type.localizedTitle(in: language), action: #selector(MenuActionTarget.selectMosaicType(_:)), keyEquivalent: "")
             item.representedObject = TypeSelection(type: type, configuration: configuration)
             item.target = MenuActionTarget.shared
             if configuration.mosaicType == type {
@@ -23,14 +24,16 @@ enum OverlayContextMenu {
 
         // Intensity slider
         let sliderItem = NSMenuItem()
-        let sliderView = IntensitySliderView(configuration: configuration)
+        let sliderView = IntensitySliderView(configuration: configuration, language: language)
         sliderItem.view = sliderView
         menu.addItem(sliderItem)
 
         menu.addItem(.separator())
 
         // Lock/Unlock
-        let lockTitle = configuration.isLocked ? "Unlock Position" : "Lock Position"
+        let lockTitle = configuration.isLocked
+            ? AppStrings.text(.unlockPosition, in: language)
+            : AppStrings.text(.lockPosition, in: language)
         let lockItem = NSMenuItem(title: lockTitle, action: #selector(MenuActionTarget.toggleLock(_:)), keyEquivalent: "")
         lockItem.representedObject = LockSelection(configuration: configuration, window: window)
         lockItem.target = MenuActionTarget.shared
@@ -39,7 +42,7 @@ enum OverlayContextMenu {
         menu.addItem(.separator())
 
         // Close window
-        let closeItem = NSMenuItem(title: "Close Window", action: #selector(MenuActionTarget.closeWindow(_:)), keyEquivalent: "")
+        let closeItem = NSMenuItem(title: AppStrings.text(.closeWindow, in: language), action: #selector(MenuActionTarget.closeWindow(_:)), keyEquivalent: "")
         closeItem.representedObject = window
         closeItem.target = MenuActionTarget.shared
         menu.addItem(closeItem)
@@ -56,12 +59,12 @@ private final class IntensitySliderView: NSView {
     private let label: NSTextField
     private let valueLabel: NSTextField
 
-    init(configuration: OverlayConfiguration) {
+    init(configuration: OverlayConfiguration, language: AppLanguage) {
         self.configuration = configuration
 
         let range = configuration.mosaicType.intensityRange
 
-        label = NSTextField(labelWithString: "Intensity")
+        label = NSTextField(labelWithString: AppStrings.text(.intensity, in: language))
         label.font = .menuFont(ofSize: 13)
 
         valueLabel = NSTextField(labelWithString: String(format: "%.0f", configuration.intensity))

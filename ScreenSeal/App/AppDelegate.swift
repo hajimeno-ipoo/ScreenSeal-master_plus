@@ -43,20 +43,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func updateRecordingControlItem() {
         guard let button = recordingControlItem?.button else { return }
 
+        let language = windowManager.appLanguage
         let configuration: (symbol: String, description: String, color: NSColor?)
         switch windowManager.captureMode {
         case .record:
             switch windowManager.recordingState {
             case .idle, .failed:
-                configuration = ("record.circle", "Start Recording", nil)
+                configuration = ("record.circle", AppStrings.text(.startRecording, in: language), nil)
             case .countdown:
-                configuration = ("xmark.circle", "Cancel Countdown", .systemOrange)
+                configuration = ("xmark.circle", AppStrings.text(.cancelCountdown, in: language), .systemOrange)
             case .starting, .recording, .stopping:
-                configuration = ("stop.circle.fill", "Stop Recording", .systemRed)
+                configuration = ("stop.circle.fill", AppStrings.text(.stopRecording, in: language), .systemRed)
             }
         case .screenshot:
             if windowManager.isScrollCaptureRunning {
-                configuration = ("stop.circle.fill", "Stop Scroll Capture", .systemRed)
+                configuration = ("stop.circle.fill", AppStrings.text(.stopScrollCapture, in: language), .systemRed)
             } else {
                 configuration = ("camera.circle", windowManager.screenshotActionTitle, nil)
             }

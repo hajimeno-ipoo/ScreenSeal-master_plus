@@ -5,7 +5,7 @@ struct MenuBarView: View {
     @EnvironmentObject var windowManager: WindowManager
 
     var body: some View {
-        Button("New Mosaic Window") {
+        Button(AppStrings.text(.newMosaicWindow, in: windowManager.appLanguage)) {
             windowManager.createWindow()
         }
         .keyboardShortcut("n")
@@ -25,7 +25,7 @@ struct MenuBarView: View {
                             .frame(width: 16)
                         Text(window.displayName)
                         Spacer()
-                        Text(window.configuration.mosaicType.rawValue)
+                        Text(window.configuration.mosaicType.localizedTitle(in: windowManager.appLanguage))
                             .foregroundColor(.secondary)
                             .font(.caption)
                     }
@@ -34,7 +34,7 @@ struct MenuBarView: View {
 
             Divider()
 
-            Button("Remove All Windows") {
+            Button(AppStrings.text(.removeAllWindows, in: windowManager.appLanguage)) {
                 windowManager.removeAllWindows()
             }
 
@@ -46,22 +46,22 @@ struct MenuBarView: View {
             Divider()
         }
 
-        Button("Save Current Layout...") {
+        Button(AppStrings.text(.saveCurrentLayout, in: windowManager.appLanguage)) {
             promptSavePreset()
         }
         .disabled(windowManager.windows.isEmpty)
 
         let presets = windowManager.presetManager.presets
         if !presets.isEmpty {
-            Menu("Load Preset") {
+            Menu(AppStrings.text(.loadPreset, in: windowManager.appLanguage)) {
                 ForEach(presets) { preset in
-                    Button("\(preset.name) (\(preset.windows.count) windows)") {
+                    Button(AppStrings.presetSummary(name: preset.name, count: preset.windows.count, in: windowManager.appLanguage)) {
                         windowManager.loadPreset(preset)
                     }
                 }
             }
 
-            Menu("Delete Preset") {
+            Menu(AppStrings.text(.deletePreset, in: windowManager.appLanguage)) {
                 ForEach(presets) { preset in
                     Button(preset.name, role: .destructive) {
                         windowManager.presetManager.delete(preset)
@@ -77,7 +77,7 @@ struct MenuBarView: View {
                 .foregroundColor(.red)
                 .font(.caption)
 
-            Button("Open Screen Recording Settings") {
+            Button(AppStrings.text(.openScreenRecordingSettings, in: windowManager.appLanguage)) {
                 openScreenRecordingSettings()
             }
         }
@@ -96,7 +96,7 @@ struct MenuBarView: View {
 
         Divider()
 
-        Button("Quit ScreenSeal_plus") {
+        Button(AppStrings.text(.quitApp, in: windowManager.appLanguage)) {
             NSApplication.shared.terminate(nil)
         }
         .keyboardShortcut("q")
@@ -106,17 +106,17 @@ struct MenuBarView: View {
     private var captureSection: some View {
         if windowManager.captureMode == .record {
             if windowManager.isCountdownActive {
-                Button("Cancel Countdown") {
+                Button(AppStrings.text(.cancelCountdown, in: windowManager.appLanguage)) {
                     windowManager.performPrimaryCaptureAction()
                 }
                 .keyboardShortcut("r")
             } else if windowManager.canStopRecording {
-                Button("Stop Recording") {
+                Button(AppStrings.text(.stopRecording, in: windowManager.appLanguage)) {
                     windowManager.performPrimaryCaptureAction()
                 }
                 .keyboardShortcut("r")
             } else {
-                Button("Start Recording") {
+                Button(AppStrings.text(.startRecording, in: windowManager.appLanguage)) {
                     windowManager.performPrimaryCaptureAction()
                 }
                 .keyboardShortcut("r")
@@ -129,43 +129,50 @@ struct MenuBarView: View {
             .disabled(windowManager.isScreenshotActionDisabled)
         }
 
-        Picker("Capture Mode", selection: $windowManager.captureMode) {
-            Text("Record").tag(CaptureMode.record)
-            Text("Screenshot").tag(CaptureMode.screenshot)
+        Picker(AppStrings.text(.captureMode, in: windowManager.appLanguage), selection: $windowManager.captureMode) {
+            Text(CaptureMode.record.localizedTitle(in: windowManager.appLanguage)).tag(CaptureMode.record)
+            Text(CaptureMode.screenshot.localizedTitle(in: windowManager.appLanguage)).tag(CaptureMode.screenshot)
+        }
+        .disabled(windowManager.isCaptureModeSelectionDisabled)
+
+        Picker(AppStrings.text(.language, in: windowManager.appLanguage), selection: $windowManager.appLanguage) {
+            ForEach(AppLanguage.allCases, id: \.self) { language in
+                Text(AppStrings.languageDisplayName(language)).tag(language)
+            }
         }
         .disabled(windowManager.isCaptureModeSelectionDisabled)
 
         if windowManager.captureMode == .screenshot {
-            Picker("Screenshot Type", selection: $windowManager.screenshotCaptureType) {
-                Text("Single Screenshot").tag(ScreenshotCaptureType.single)
-                Text("Scroll Capture").tag(ScreenshotCaptureType.scroll)
+            Picker(AppStrings.text(.screenshotType, in: windowManager.appLanguage), selection: $windowManager.screenshotCaptureType) {
+                Text(ScreenshotCaptureType.single.localizedTitle(in: windowManager.appLanguage)).tag(ScreenshotCaptureType.single)
+                Text(ScreenshotCaptureType.scroll.localizedTitle(in: windowManager.appLanguage)).tag(ScreenshotCaptureType.scroll)
             }
             .disabled(windowManager.isTakingScreenshot)
 
-            Picker("Screenshot Scale", selection: $windowManager.screenshotScaleOption) {
+            Picker(AppStrings.text(.screenshotScale, in: windowManager.appLanguage), selection: $windowManager.screenshotScaleOption) {
                 ForEach(windowManager.availableScreenshotScaleOptions, id: \.self) { option in
-                    Text(option.rawValue).tag(option)
+                    Text(option.localizedTitle(in: windowManager.appLanguage)).tag(option)
                 }
             }
             .disabled(windowManager.isTakingScreenshot)
         }
 
-        Menu("Capture Target") {
+        Menu(AppStrings.text(.captureTarget, in: windowManager.appLanguage)) {
             Button {
                 windowManager.selectDisplayRecordingTarget()
             } label: {
-                selectionMenuLabel("Full Display", selected: windowManager.recordingTarget == .display)
+                selectionMenuLabel(AppStrings.text(.fullDisplay, in: windowManager.appLanguage), selected: windowManager.recordingTarget == .display)
             }
             .disabled(windowManager.isFullDisplayTargetDisabled)
 
-            Button("Choose Window...") {
+            Button(AppStrings.text(.chooseWindow, in: windowManager.appLanguage)) {
                 windowManager.beginSystemWindowSelection()
             }
             .disabled(windowManager.isCaptureModeSelectionDisabled || windowManager.shouldDisableNonDisplayTargets)
 
             if case .window = windowManager.recordingTarget,
                let selectedWindowDisplayName = windowManager.selectedWindowDisplayName {
-                Text("Selected Window: \(selectedWindowDisplayName)")
+                Text(AppStrings.selectedWindow(selectedWindowDisplayName, in: windowManager.appLanguage))
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -173,48 +180,48 @@ struct MenuBarView: View {
             Button {
                 windowManager.beginRecordingRegionSelection()
             } label: {
-                selectionMenuLabel("Select Region...", selected: windowManager.isRegionRecordingTarget)
+                selectionMenuLabel(AppStrings.text(.selectRegion, in: windowManager.appLanguage), selected: windowManager.isRegionRecordingTarget)
             }
             .disabled(windowManager.isCaptureModeSelectionDisabled || windowManager.shouldDisableNonDisplayTargets)
         }
         .disabled(windowManager.isCaptureModeSelectionDisabled)
 
-        Picker("Screenshot Click Action", selection: $windowManager.screenshotOpenAction) {
-            Text("Preview").tag(ScreenshotOpenAction.preview)
-            Text("Finder").tag(ScreenshotOpenAction.finder)
+        Picker(AppStrings.text(.screenshotClickAction, in: windowManager.appLanguage), selection: $windowManager.screenshotOpenAction) {
+            Text(ScreenshotOpenAction.preview.localizedTitle(in: windowManager.appLanguage)).tag(ScreenshotOpenAction.preview)
+            Text(ScreenshotOpenAction.finder.localizedTitle(in: windowManager.appLanguage)).tag(ScreenshotOpenAction.finder)
         }
         .disabled(windowManager.isTakingScreenshot)
 
-        Picker("Recording Click Action", selection: $windowManager.recordingOpenAction) {
-            Text("QuickTime").tag(RecordingOpenAction.quickTime)
-            Text("Finder").tag(RecordingOpenAction.finder)
+        Picker(AppStrings.text(.recordingClickAction, in: windowManager.appLanguage), selection: $windowManager.recordingOpenAction) {
+            Text(RecordingOpenAction.quickTime.localizedTitle(in: windowManager.appLanguage)).tag(RecordingOpenAction.quickTime)
+            Text(RecordingOpenAction.finder.localizedTitle(in: windowManager.appLanguage)).tag(RecordingOpenAction.finder)
         }
         .disabled(windowManager.isRecordingPreparationActive)
 
-        Picker("Zoom Magnification", selection: $windowManager.recordingZoomScale) {
+        Picker(AppStrings.text(.zoomMagnification, in: windowManager.appLanguage), selection: $windowManager.recordingZoomScale) {
             ForEach(RecordingZoomScale.allCases, id: \.self) { scale in
                 Text(scale.menuTitle).tag(scale)
             }
         }
         .disabled(windowManager.recordingOptionsDisabled)
 
-        Toggle("Follow Cursor", isOn: $windowManager.followCursorRecording)
+        Toggle(AppStrings.text(.followCursor, in: windowManager.appLanguage), isOn: $windowManager.followCursorRecording)
             .disabled(windowManager.recordingOptionsDisabled)
-        Toggle("Live Preview During Recording", isOn: $windowManager.livePreviewDuringRecording)
+        Toggle(AppStrings.text(.livePreviewDuringRecording, in: windowManager.appLanguage), isOn: $windowManager.livePreviewDuringRecording)
             .disabled(windowManager.livePreviewToggleDisabled)
-        Toggle("Cursor Highlight", isOn: $windowManager.cursorHighlightEnabled)
+        Toggle(AppStrings.text(.cursorHighlight, in: windowManager.appLanguage), isOn: $windowManager.cursorHighlightEnabled)
             .disabled(windowManager.recordingOptionsDisabled)
-        Toggle("Click Ring", isOn: $windowManager.clickRingEnabled)
+        Toggle(AppStrings.text(.clickRing, in: windowManager.appLanguage), isOn: $windowManager.clickRingEnabled)
             .disabled(windowManager.recordingOptionsDisabled)
-        Button("Cursor Highlight Color...") {
+        Button(AppStrings.text(.cursorHighlightColor, in: windowManager.appLanguage)) {
             windowManager.openCursorHighlightColorPanel()
         }
         .disabled(windowManager.recordingOptionsDisabled)
-        Button("Click Ring Color...") {
+        Button(AppStrings.text(.clickRingColor, in: windowManager.appLanguage)) {
             windowManager.openClickRingColorPanel()
         }
         .disabled(windowManager.recordingOptionsDisabled)
-        Button("Reset Cursor Colors") {
+        Button(AppStrings.text(.resetCursorColors, in: windowManager.appLanguage)) {
             windowManager.resetRecordingCursorColors()
         }
         .disabled(windowManager.recordingOptionsDisabled)
@@ -222,15 +229,15 @@ struct MenuBarView: View {
 
     private func promptSavePreset() {
         let alert = NSAlert()
-        alert.messageText = "Save Layout Preset"
-        alert.informativeText = "Enter a name for this layout:"
-        alert.addButton(withTitle: "Save")
-        alert.addButton(withTitle: "Cancel")
+        alert.messageText = AppStrings.text(.saveLayoutPreset, in: windowManager.appLanguage)
+        alert.informativeText = AppStrings.text(.saveLayoutPresetMessage, in: windowManager.appLanguage)
+        alert.addButton(withTitle: AppStrings.text(.save, in: windowManager.appLanguage))
+        alert.addButton(withTitle: AppStrings.text(.cancel, in: windowManager.appLanguage))
 
         let textField = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
-        textField.placeholderString = "Preset name"
+        textField.placeholderString = AppStrings.text(.presetName, in: windowManager.appLanguage)
         let count = windowManager.presetManager.presets.count + 1
-        textField.stringValue = "Preset \(count)"
+        textField.stringValue = AppStrings.presetDefaultName(count, in: windowManager.appLanguage)
         alert.accessoryView = textField
 
         alert.window.initialFirstResponder = textField
@@ -247,7 +254,7 @@ struct MenuBarView: View {
     private var appVersionText: String {
         let short = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "-"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "-"
-        return "Version \(short) (\(build))"
+        return AppStrings.version(short: short, build: build, in: windowManager.appLanguage)
     }
 
     private func openScreenRecordingSettings() {

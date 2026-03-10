@@ -58,8 +58,12 @@ final class OverlayContentView: NSView {
 
     private func setupAccessibility() {
         setAccessibilityRole(.group)
-        setAccessibilityLabel("Mosaic Overlay")
-        setAccessibilityHelp("Right-click to change mosaic settings. Scroll to adjust intensity.")
+        updateLocalizedStrings(language: AppLanguage.resolved())
+    }
+
+    func updateLocalizedStrings(language: AppLanguage) {
+        setAccessibilityLabel(AppStrings.text(.mosaicOverlay, in: language))
+        setAccessibilityHelp(AppStrings.text(.mosaicOverlayHelp, in: language))
     }
 
     private func observeConfiguration() {

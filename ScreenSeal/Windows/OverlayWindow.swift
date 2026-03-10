@@ -8,7 +8,7 @@ final class OverlayWindow: NSWindow {
     private var didMoveObserver: Any?
 
     var displayName: String {
-        "Mosaic #\(windowIndex)"
+        AppStrings.mosaicWindowName(index: windowIndex, in: AppLanguage.resolved())
     }
 
     init(contentRect: NSRect, index: Int) {
@@ -49,6 +49,10 @@ final class OverlayWindow: NSWindow {
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    func updateLocalizedStrings(language: AppLanguage) {
+        overlayContentView.updateLocalizedStrings(language: language)
+    }
 
     func lockPosition() {
         isMovable = false

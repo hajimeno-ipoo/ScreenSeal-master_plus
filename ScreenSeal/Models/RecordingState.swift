@@ -13,20 +13,21 @@ enum RecordingState: Equatable {
         return false
     }
 
-    var statusText: String? {
+    func statusText(in language: AppLanguage) -> String? {
         switch self {
         case .idle:
             return nil
         case .countdown(let secondsRemaining):
-            return "Recording starts in \(secondsRemaining)..."
+            return AppStrings.recordingStartsIn(secondsRemaining, in: language)
         case .starting:
-            return "Recording: starting..."
+            return AppStrings.recordingStarting(in: language)
         case .recording(_, let startedAt):
             let formatter = DateFormatter()
             formatter.timeStyle = .medium
-            return "Recording: ON (started at \(formatter.string(from: startedAt)))"
+            formatter.locale = Locale(identifier: language.localeIdentifier)
+            return AppStrings.recordingStartedAt(formatter.string(from: startedAt), in: language)
         case .stopping:
-            return "Recording: stopping..."
+            return AppStrings.recordingStopping(in: language)
         case .failed(let message):
             return message
         }

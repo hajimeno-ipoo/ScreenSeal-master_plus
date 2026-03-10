@@ -322,7 +322,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
                 pointerTrackingService.stop()
             }
             cleanupResources()
-            state = .failed(message: "録画開始に必要な権限が不足、または開始に失敗しました")
+            state = .failed(message: AppStrings.recordingStartFailed(in: AppLanguage.resolved()))
             recordingLogger.error("Recording start failed: \(error.localizedDescription)")
             throw error
         }
@@ -358,9 +358,9 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
         } catch {
             cleanupResources()
             if case RecordingError.noVideoFrame = error {
-                state = .failed(message: "録画データを取得できませんでした")
+                state = .failed(message: AppStrings.recordingDataUnavailable(in: AppLanguage.resolved()))
             } else {
-                state = .failed(message: "録画停止に失敗しました")
+                state = .failed(message: AppStrings.recordingStopFailed(in: AppLanguage.resolved()))
             }
             recordingLogger.error("Recording stop failed: \(error.localizedDescription)")
             throw error
@@ -407,7 +407,7 @@ final class RecordingService: NSObject, SCStreamOutput, SCStreamDelegate {
                 recordingLogger.info("Recording stopped by system control")
             } catch {
                 self.cleanupResources()
-                self.state = .failed(message: "録画停止に失敗しました")
+                self.state = .failed(message: AppStrings.recordingStopFailed(in: AppLanguage.resolved()))
             }
         }
     }

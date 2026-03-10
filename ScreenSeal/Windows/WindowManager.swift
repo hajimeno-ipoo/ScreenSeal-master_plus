@@ -5,6 +5,487 @@ import CoreImage
 import ScreenCaptureKit
 import os.log
 
+enum AppLanguage: String, CaseIterable, Equatable {
+    case english = "en"
+    case japanese = "ja"
+
+    static let userDefaultsKey = "ScreenSeal_plus.appLanguage"
+
+    static func resolved(userDefaults: UserDefaults = .standard) -> AppLanguage {
+        if let rawValue = userDefaults.string(forKey: userDefaultsKey),
+           let language = AppLanguage(rawValue: rawValue) {
+            return language
+        }
+        let preferred = Locale.preferredLanguages.first ?? Locale.current.identifier
+        return preferred.hasPrefix("ja") ? .japanese : .english
+    }
+
+    var menuTitle: String {
+        switch self {
+        case .english:
+            return "English"
+        case .japanese:
+            return "日本語"
+        }
+    }
+
+    var localeIdentifier: String {
+        switch self {
+        case .english:
+            return "en_US"
+        case .japanese:
+            return "ja_JP"
+        }
+    }
+}
+
+enum AppStringKey {
+    case newMosaicWindow
+    case removeAllWindows
+    case saveCurrentLayout
+    case loadPreset
+    case deletePreset
+    case openScreenRecordingSettings
+    case quitApp
+    case startRecording
+    case cancelCountdown
+    case stopRecording
+    case takeScreenshot
+    case stopScrollCapture
+    case language
+    case captureMode
+    case record
+    case screenshot
+    case screenshotType
+    case singleScreenshot
+    case scrollCapture
+    case screenshotScale
+    case captureTarget
+    case fullDisplay
+    case chooseWindow
+    case selectRegion
+    case screenshotClickAction
+    case recordingClickAction
+    case preview
+    case finder
+    case quickTime
+    case zoomMagnification
+    case followCursor
+    case livePreviewDuringRecording
+    case cursorHighlight
+    case clickRing
+    case cursorHighlightColor
+    case clickRingColor
+    case resetCursorColors
+    case saveLayoutPreset
+    case saveLayoutPresetMessage
+    case save
+    case cancel
+    case presetName
+    case version
+    case selectedWindow
+    case screenshotSavedTitle
+    case scrollCaptureSavedTitle
+    case recordingSavedTitle
+    case mosaicType
+    case intensity
+    case unlockPosition
+    case lockPosition
+    case closeWindow
+    case livePreview
+    case pinPreview
+    case pin
+    case unpin
+    case pinLivePreview
+    case unpinLivePreview
+    case mosaicOverlay
+    case mosaicOverlayHelp
+    case noDisplayFound
+}
+
+struct AppStrings {
+    private static let english: [AppStringKey: String] = [
+        .newMosaicWindow: "New Mosaic Window",
+        .removeAllWindows: "Remove All Windows",
+        .saveCurrentLayout: "Save Current Layout...",
+        .loadPreset: "Load Preset",
+        .deletePreset: "Delete Preset",
+        .openScreenRecordingSettings: "Open Screen Recording Settings",
+        .quitApp: "Quit ScreenSeal_plus",
+        .startRecording: "Start Recording",
+        .cancelCountdown: "Cancel Countdown",
+        .stopRecording: "Stop Recording",
+        .takeScreenshot: "Take Screenshot",
+        .stopScrollCapture: "Stop Scroll Capture",
+        .language: "Language",
+        .captureMode: "Capture Mode",
+        .record: "Record",
+        .screenshot: "Screenshot",
+        .screenshotType: "Screenshot Type",
+        .singleScreenshot: "Single Screenshot",
+        .scrollCapture: "Scroll Capture",
+        .screenshotScale: "Screenshot Scale",
+        .captureTarget: "Capture Target",
+        .fullDisplay: "Full Display",
+        .chooseWindow: "Choose Window...",
+        .selectRegion: "Select Region...",
+        .screenshotClickAction: "Screenshot Click Action",
+        .recordingClickAction: "Recording Click Action",
+        .preview: "Preview",
+        .finder: "Finder",
+        .quickTime: "QuickTime",
+        .zoomMagnification: "Zoom Magnification",
+        .followCursor: "Follow Cursor",
+        .livePreviewDuringRecording: "Live Preview During Recording",
+        .cursorHighlight: "Cursor Highlight",
+        .clickRing: "Click Ring",
+        .cursorHighlightColor: "Cursor Highlight Color...",
+        .clickRingColor: "Click Ring Color...",
+        .resetCursorColors: "Reset Cursor Colors",
+        .saveLayoutPreset: "Save Layout Preset",
+        .saveLayoutPresetMessage: "Enter a name for this layout:",
+        .save: "Save",
+        .cancel: "Cancel",
+        .presetName: "Preset name",
+        .version: "Version",
+        .selectedWindow: "Selected Window",
+        .screenshotSavedTitle: "Screenshot Saved",
+        .scrollCaptureSavedTitle: "Scroll Capture Saved",
+        .recordingSavedTitle: "Recording Saved",
+        .mosaicType: "Mosaic Type",
+        .intensity: "Intensity",
+        .unlockPosition: "Unlock Position",
+        .lockPosition: "Lock Position",
+        .closeWindow: "Close Window",
+        .livePreview: "Live Preview",
+        .pinPreview: "Pin Preview",
+        .pin: "Pin",
+        .unpin: "Unpin",
+        .pinLivePreview: "Pin live preview",
+        .unpinLivePreview: "Unpin live preview",
+        .mosaicOverlay: "Mosaic Overlay",
+        .mosaicOverlayHelp: "Right-click to change mosaic settings. Scroll to adjust intensity.",
+        .noDisplayFound: "No display found",
+    ]
+
+    private static let japanese: [AppStringKey: String] = [
+        .newMosaicWindow: "新しいモザイクウィンドウ",
+        .removeAllWindows: "すべてのウィンドウを削除",
+        .saveCurrentLayout: "現在のレイアウトを保存...",
+        .loadPreset: "プリセットを読み込む",
+        .deletePreset: "プリセットを削除",
+        .openScreenRecordingSettings: "画面収録の設定を開く",
+        .quitApp: "ScreenSeal_plus を終了",
+        .startRecording: "録画開始",
+        .cancelCountdown: "カウントダウンを中止",
+        .stopRecording: "録画停止",
+        .takeScreenshot: "スクリーンショットを撮る",
+        .stopScrollCapture: "スクロールキャプチャを停止",
+        .language: "言語",
+        .captureMode: "キャプチャモード",
+        .record: "録画",
+        .screenshot: "スクリーンショット",
+        .screenshotType: "スクリーンショット種別",
+        .singleScreenshot: "通常スクリーンショット",
+        .scrollCapture: "スクロールキャプチャ",
+        .screenshotScale: "保存倍率",
+        .captureTarget: "キャプチャ対象",
+        .fullDisplay: "フルディスプレイ",
+        .chooseWindow: "ウィンドウを選ぶ...",
+        .selectRegion: "範囲を選ぶ...",
+        .screenshotClickAction: "スクリーンショットのクリック動作",
+        .recordingClickAction: "録画のクリック動作",
+        .preview: "プレビュー",
+        .finder: "Finder",
+        .quickTime: "QuickTime",
+        .zoomMagnification: "ズーム倍率",
+        .followCursor: "カーソルを追う",
+        .livePreviewDuringRecording: "録画中のライブプレビュー",
+        .cursorHighlight: "カーソル強調",
+        .clickRing: "クリックリング",
+        .cursorHighlightColor: "カーソル強調色...",
+        .clickRingColor: "クリックリング色...",
+        .resetCursorColors: "カーソル色をリセット",
+        .saveLayoutPreset: "レイアウトを保存",
+        .saveLayoutPresetMessage: "このレイアウト名を入力してください:",
+        .save: "保存",
+        .cancel: "キャンセル",
+        .presetName: "プリセット名",
+        .version: "バージョン",
+        .selectedWindow: "選択中のウィンドウ",
+        .screenshotSavedTitle: "スクリーンショットを保存しました",
+        .scrollCaptureSavedTitle: "スクロールキャプチャを保存しました",
+        .recordingSavedTitle: "録画を保存しました",
+        .mosaicType: "モザイク種類",
+        .intensity: "強さ",
+        .unlockPosition: "位置固定を解除",
+        .lockPosition: "位置を固定",
+        .closeWindow: "ウィンドウを閉じる",
+        .livePreview: "ライブプレビュー",
+        .pinPreview: "プレビューを固定",
+        .pin: "固定",
+        .unpin: "固定解除",
+        .pinLivePreview: "ライブプレビューを固定",
+        .unpinLivePreview: "ライブプレビューの固定を解除",
+        .mosaicOverlay: "モザイクオーバーレイ",
+        .mosaicOverlayHelp: "右クリックで設定変更。スクロールで強さ調整。",
+        .noDisplayFound: "画面が見つかりません。",
+    ]
+
+    static func text(_ key: AppStringKey, in language: AppLanguage) -> String {
+        switch language {
+        case .english:
+            return english[key] ?? ""
+        case .japanese:
+            return japanese[key] ?? ""
+        }
+    }
+
+    static func text(_ key: AppStringKey) -> String {
+        text(key, in: AppLanguage.resolved())
+    }
+
+    static func languageDisplayName(_ language: AppLanguage) -> String {
+        language.menuTitle
+    }
+
+    static func version(short: String, build: String, in language: AppLanguage) -> String {
+        "\(text(.version, in: language)) \(short) (\(build))"
+    }
+
+    static func presetDefaultName(_ count: Int, in language: AppLanguage) -> String {
+        switch language {
+        case .english:
+            return "Preset \(count)"
+        case .japanese:
+            return "プリセット \(count)"
+        }
+    }
+
+    static func presetSummary(name: String, count: Int, in language: AppLanguage) -> String {
+        switch language {
+        case .english:
+            return "\(name) (\(count) windows)"
+        case .japanese:
+            return "\(name)（\(count)ウィンドウ）"
+        }
+    }
+
+    static func selectedWindow(_ name: String, in language: AppLanguage) -> String {
+        "\(text(.selectedWindow, in: language)): \(name)"
+    }
+
+    static func screenshotSaving(in language: AppLanguage) -> String {
+        switch language {
+        case .english: return "Screenshot: saving..."
+        case .japanese: return "スクリーンショット: 保存中..."
+        }
+    }
+
+    static func screenshotSaved(filename: String, in language: AppLanguage) -> String {
+        switch language {
+        case .english: return "Screenshot saved: \(filename)"
+        case .japanese: return "スクリーンショット保存: \(filename)"
+        }
+    }
+
+    static func scrollCapturePreparing(in language: AppLanguage) -> String {
+        switch language {
+        case .english: return "Scroll Capture: preparing..."
+        case .japanese: return "スクロールキャプチャ: 準備中..."
+        }
+    }
+
+    static func scrollCaptureStopping(in language: AppLanguage) -> String {
+        switch language {
+        case .english: return "Scroll Capture: stopping..."
+        case .japanese: return "スクロールキャプチャ: 停止中..."
+        }
+    }
+
+    static func scrollCaptureSaved(filename: String, in language: AppLanguage) -> String {
+        switch language {
+        case .english: return "Scroll Capture saved: \(filename)"
+        case .japanese: return "スクロールキャプチャ保存: \(filename)"
+        }
+    }
+
+    static func recordingStartsIn(_ secondsRemaining: Int, in language: AppLanguage) -> String {
+        switch language {
+        case .english: return "Recording starts in \(secondsRemaining)..."
+        case .japanese: return "録画開始まで \(secondsRemaining)..."
+        }
+    }
+
+    static func recordingStarting(in language: AppLanguage) -> String {
+        switch language {
+        case .english: return "Recording: starting..."
+        case .japanese: return "録画: 開始中..."
+        }
+    }
+
+    static func recordingStartedAt(_ timeText: String, in language: AppLanguage) -> String {
+        switch language {
+        case .english: return "Recording: ON (started at \(timeText))"
+        case .japanese: return "録画中（開始 \(timeText)）"
+        }
+    }
+
+    static func recordingStopping(in language: AppLanguage) -> String {
+        switch language {
+        case .english: return "Recording: stopping..."
+        case .japanese: return "録画: 停止中..."
+        }
+    }
+
+    static func clickToOpenIn(_ target: String, in language: AppLanguage) -> String {
+        switch language {
+        case .english: return "Click to open in \(target)"
+        case .japanese: return "クリックで \(target) で開く"
+        }
+    }
+
+    static func recordingFeatureRequiresMacOS15(in language: AppLanguage) -> String {
+        switch language {
+        case .english: return "Recording is available on macOS 15.0 or later."
+        case .japanese: return "録画機能は macOS 15.0 以降で利用できます。"
+        }
+    }
+
+    static func recordingStartFailed(in language: AppLanguage) -> String {
+        switch language {
+        case .english: return "Recording permission is missing, or recording could not start."
+        case .japanese: return "録画開始に必要な権限が不足、または開始に失敗しました。"
+        }
+    }
+
+    static func recordingDataUnavailable(in language: AppLanguage) -> String {
+        switch language {
+        case .english: return "Recording data could not be captured."
+        case .japanese: return "録画データを取得できませんでした。"
+        }
+    }
+
+    static func recordingStopFailed(in language: AppLanguage) -> String {
+        switch language {
+        case .english: return "Recording could not be stopped."
+        case .japanese: return "録画停止に失敗しました。"
+        }
+    }
+
+    static func windowNotFound(in language: AppLanguage) -> String {
+        switch language {
+        case .english: return "The selected window could not be found. Please select it again."
+        case .japanese: return "選択したウィンドウが見つかりません。もう一度選んでください。"
+        }
+    }
+
+    static func regionDisplayNotFound(in language: AppLanguage) -> String {
+        switch language {
+        case .english: return "The selected region is no longer available. Please choose it again."
+        case .japanese: return "選択した範囲を使えません。もう一度選び直してください。"
+        }
+    }
+
+    static func screenshotDisplayNotFound(in language: AppLanguage) -> String {
+        switch language {
+        case .english: return "The display for this capture could not be found."
+        case .japanese: return "キャプチャ対象の画面が見つかりません。"
+        }
+    }
+
+    static func screenshotWindowNotFound(in language: AppLanguage) -> String {
+        switch language {
+        case .english: return "The selected window could not be found."
+        case .japanese: return "選択したウィンドウが見つかりません。"
+        }
+    }
+
+    static func screenshotImageCreationFailed(in language: AppLanguage) -> String {
+        switch language {
+        case .english: return "The screenshot image could not be created."
+        case .japanese: return "スクリーンショット画像を取得できませんでした。"
+        }
+    }
+
+    static func screenshotPngEncodingFailed(in language: AppLanguage) -> String {
+        switch language {
+        case .english: return "The screenshot PNG could not be created."
+        case .japanese: return "スクリーンショットの保存形式を作れませんでした。"
+        }
+    }
+
+    static func scrollCaptureInvalidTarget(in language: AppLanguage) -> String {
+        switch language {
+        case .english: return "Scroll Capture requires Window or Region."
+        case .japanese: return "スクロールキャプチャは Window か Region が必要です。"
+        }
+    }
+
+    static func accessibilityPermissionRequired(in language: AppLanguage) -> String {
+        switch language {
+        case .english: return "Scroll Capture requires Accessibility permission."
+        case .japanese: return "スクロールキャプチャにはアクセシビリティ権限が必要です。"
+        }
+    }
+
+    static func scrollEventCreationFailed(in language: AppLanguage) -> String {
+        switch language {
+        case .english: return "The scroll event could not be created."
+        case .japanese: return "スクロールイベントを作成できませんでした。"
+        }
+    }
+
+    static func scrollImageProcessingFailed(in language: AppLanguage) -> String {
+        switch language {
+        case .english: return "Scroll Capture image processing failed."
+        case .japanese: return "スクロールキャプチャの画像処理に失敗しました。"
+        }
+    }
+
+    static func noScrollCaptureFrames(in language: AppLanguage) -> String {
+        switch language {
+        case .english: return "No scroll capture frames were produced."
+        case .japanese: return "スクロールキャプチャ画像を取得できませんでした。"
+        }
+    }
+
+    static func scrollCaptureZipCreationFailed(in language: AppLanguage) -> String {
+        switch language {
+        case .english: return "Scroll Capture ZIP creation failed."
+        case .japanese: return "スクロールキャプチャの ZIP 作成に失敗しました。"
+        }
+    }
+
+    static func screenCaptureFailed(_ message: String, in language: AppLanguage) -> String {
+        switch language {
+        case .english: return "Screen capture failed: \(message)"
+        case .japanese: return "画面キャプチャに失敗しました: \(message)"
+        }
+    }
+
+    static func screenCapturePermissionRequired(in language: AppLanguage) -> String {
+        switch language {
+        case .english: return "Screen Recording permission is not granted. Allow it in System Settings."
+        case .japanese: return "画面収録の権限が未許可です。システム設定で許可してください。"
+        }
+    }
+
+    static func mosaicWindowName(index: Int, in language: AppLanguage) -> String {
+        switch language {
+        case .english: return "Mosaic #\(index)"
+        case .japanese: return "モザイク #\(index)"
+        }
+    }
+
+    static func defaultWindowName(in language: AppLanguage) -> String {
+        switch language {
+        case .english: return "Window"
+        case .japanese: return "ウィンドウ"
+        }
+    }
+}
+
 private let logger = Logger(subsystem: "com.screenseal.app", category: "WindowManager")
 
 private final class WindowSelectionPickerCoordinator: NSObject, SCContentSharingPickerObserver {
@@ -77,7 +558,7 @@ private final class WindowSelectionPickerCoordinator: NSObject, SCContentSharing
     }
 
     private static func makeDisplayName(for window: SCWindow) -> String {
-        let appName = window.owningApplication?.applicationName ?? "Window"
+        let appName = window.owningApplication?.applicationName ?? AppStrings.defaultWindowName(in: AppLanguage.resolved())
         let cleanedTitle = (window.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanedTitle.isEmpty else { return appName }
         return "\(appName) - \(cleanedTitle)"
@@ -101,16 +582,43 @@ enum RecordingTarget: Equatable {
 enum CaptureMode: String, Equatable {
     case record = "Record"
     case screenshot = "Screenshot"
+
+    func localizedTitle(in language: AppLanguage) -> String {
+        switch self {
+        case .record:
+            return AppStrings.text(.record, in: language)
+        case .screenshot:
+            return AppStrings.text(.screenshot, in: language)
+        }
+    }
 }
 
 enum ScreenshotOpenAction: String, CaseIterable, Equatable {
     case preview = "Preview"
     case finder = "Finder"
+
+    func localizedTitle(in language: AppLanguage) -> String {
+        switch self {
+        case .preview:
+            return AppStrings.text(.preview, in: language)
+        case .finder:
+            return AppStrings.text(.finder, in: language)
+        }
+    }
 }
 
 enum ScreenshotCaptureType: String, CaseIterable, Equatable {
     case single = "Single Screenshot"
     case scroll = "Scroll Capture"
+
+    func localizedTitle(in language: AppLanguage) -> String {
+        switch self {
+        case .single:
+            return AppStrings.text(.singleScreenshot, in: language)
+        case .scroll:
+            return AppStrings.text(.scrollCapture, in: language)
+        }
+    }
 }
 
 enum ScreenshotScaleOption: String, CaseIterable, Equatable {
@@ -118,11 +626,29 @@ enum ScreenshotScaleOption: String, CaseIterable, Equatable {
     case x2 = "2x"
     case x1 = "1x"
     case x0_5 = "0.5x"
+
+    func localizedTitle(in language: AppLanguage) -> String {
+        switch self {
+        case .original:
+            return rawValue
+        case .x2, .x1, .x0_5:
+            return rawValue
+        }
+    }
 }
 
 enum RecordingOpenAction: String, CaseIterable, Equatable {
     case quickTime = "QuickTime"
     case finder = "Finder"
+
+    func localizedTitle(in language: AppLanguage) -> String {
+        switch self {
+        case .quickTime:
+            return AppStrings.text(.quickTime, in: language)
+        case .finder:
+            return AppStrings.text(.finder, in: language)
+        }
+    }
 }
 
 enum RecordingZoomScale: Double, CaseIterable, Equatable {
@@ -182,9 +708,9 @@ private enum RecordingTargetResolutionError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .windowNotFound:
-            return "選択したウィンドウが見つかりません。もう一度選んでください。"
+            return AppStrings.windowNotFound(in: AppLanguage.resolved())
         case .regionDisplayNotFound:
-            return "選択した範囲を使えません。もう一度選び直してください。"
+            return AppStrings.regionDisplayNotFound(in: AppLanguage.resolved())
         }
     }
 }
@@ -330,7 +856,7 @@ private final class RecordingLivePreviewView: NSView {
 
     private static let resizeHitInset: CGFloat = 12
 
-    private let titleLabel = NSTextField(labelWithString: "Live Preview")
+    private let titleLabel = NSTextField(labelWithString: AppStrings.text(.livePreview))
     private let imageContainerView = NSView()
     private let imageLayer = CALayer()
     private let pinButton = NSButton()
@@ -392,7 +918,7 @@ private final class RecordingLivePreviewView: NSView {
             imageContainerView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10)
         ])
 
-        setPinned(false)
+        updateLocalizedStrings(language: AppLanguage.resolved())
     }
 
     @available(*, unavailable)
@@ -463,14 +989,20 @@ private final class RecordingLivePreviewView: NSView {
     func setPinned(_ pinned: Bool) {
         isPinned = pinned
         let symbolName = pinned ? "pin.fill" : "pin"
-        if let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: "Pin Preview") {
+        let language = AppLanguage.resolved()
+        if let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: AppStrings.text(.pinPreview, in: language)) {
             pinButton.image = image
             pinButton.title = ""
         } else {
             pinButton.image = nil
-            pinButton.title = pinned ? "Unpin" : "Pin"
+            pinButton.title = pinned ? AppStrings.text(.unpin, in: language) : AppStrings.text(.pin, in: language)
         }
-        pinButton.toolTip = pinned ? "Unpin live preview" : "Pin live preview"
+        pinButton.toolTip = pinned ? AppStrings.text(.unpinLivePreview, in: language) : AppStrings.text(.pinLivePreview, in: language)
+    }
+
+    func updateLocalizedStrings(language: AppLanguage) {
+        titleLabel.stringValue = AppStrings.text(.livePreview, in: language)
+        setPinned(isPinned)
     }
 
     @objc
@@ -560,6 +1092,10 @@ private final class RecordingLivePreviewWindow: NSWindow {
         previewView.setPinned(pinned)
         isMovableByWindowBackground = !pinned
         level = pinned ? .statusBar : .floating
+    }
+
+    func updateLocalizedStrings(language: AppLanguage) {
+        previewView.updateLocalizedStrings(language: language)
     }
 
     func applyPersistedFrame(_ frame: CGRect) {
@@ -1283,6 +1819,13 @@ final class WindowManager: ObservableObject {
             clearStatusForModeChange()
         }
     }
+    @Published var appLanguage: AppLanguage {
+        didSet {
+            UserDefaults.standard.set(appLanguage.rawValue, forKey: AppLanguage.userDefaultsKey)
+            recordingLivePreviewWindow?.updateLocalizedStrings(language: appLanguage)
+            windows.forEach { $0.updateLocalizedStrings(language: appLanguage) }
+        }
+    }
     @Published var recordingState: RecordingState = .idle
     @Published private(set) var screenshotStatusMessage: String?
     @Published private(set) var screenshotStatusIsFailure = false
@@ -1409,7 +1952,9 @@ final class WindowManager: ObservableObject {
     }
 
     var screenshotActionTitle: String {
-        isScrollCaptureRunning ? "Stop Scroll Capture" : "Take Screenshot"
+        isScrollCaptureRunning
+            ? AppStrings.text(.stopScrollCapture, in: appLanguage)
+            : AppStrings.text(.takeScreenshot, in: appLanguage)
     }
 
     var availableScreenshotScaleOptions: [ScreenshotScaleOption] {
@@ -1428,16 +1973,16 @@ final class WindowManager: ObservableObject {
     var statusText: String? {
         switch captureMode {
         case .record:
-            return recordingState.statusText ?? screenshotStatusMessage
+            return recordingState.statusText(in: appLanguage) ?? screenshotStatusMessage
         case .screenshot:
-            return screenshotStatusMessage ?? recordingState.statusText
+            return screenshotStatusMessage ?? recordingState.statusText(in: appLanguage)
         }
     }
 
     var isStatusFailure: Bool {
         switch captureMode {
         case .record:
-            return recordingState.statusText != nil ? recordingState.isFailure : screenshotStatusIsFailure
+            return recordingState.statusText(in: appLanguage) != nil ? recordingState.isFailure : screenshotStatusIsFailure
         case .screenshot:
             return screenshotStatusMessage != nil ? screenshotStatusIsFailure : recordingState.isFailure
         }
@@ -1453,6 +1998,7 @@ final class WindowManager: ObservableObject {
     }
 
     init() {
+        self.appLanguage = AppLanguage.resolved()
         self.screenshotScaleOption = ScreenshotScaleOption(
             rawValue: UserDefaults.standard.string(forKey: Self.screenshotScaleOptionKey) ?? ""
         ) ?? .original
@@ -1585,7 +2131,7 @@ final class WindowManager: ObservableObject {
         clearScreenshotStatus()
 
         guard #available(macOS 15.0, *) else {
-            recordingState = .failed(message: "録画機能は macOS 15.0 以降で利用できます")
+            recordingState = .failed(message: AppStrings.recordingFeatureRequiresMacOS15(in: appLanguage))
             return
         }
 
@@ -1610,7 +2156,7 @@ final class WindowManager: ObservableObject {
 
         clearScreenshotStatus()
         isTakingScreenshot = true
-        screenshotStatusMessage = "Screenshot: saving..."
+        screenshotStatusMessage = AppStrings.screenshotSaving(in: appLanguage)
 
         Task { [weak self] in
             guard let self else { return }
@@ -1635,13 +2181,19 @@ final class WindowManager: ObservableObject {
                 await MainActor.run {
                     self.isTakingScreenshot = false
                     self.screenshotStatusIsFailure = false
-                    self.screenshotStatusMessage = "Screenshot saved: \(result.outputURL.lastPathComponent)"
+                    self.screenshotStatusMessage = AppStrings.screenshotSaved(
+                        filename: result.outputURL.lastPathComponent,
+                        in: self.appLanguage
+                    )
                     self.showCapturePreview(
                         image: result.image,
                         outputURL: result.outputURL,
                         target: target,
-                        title: "Screenshot Saved",
-                        subtitle: "Click to open in \(self.screenshotOpenAction.rawValue)",
+                        title: AppStrings.text(.screenshotSavedTitle, in: self.appLanguage),
+                        subtitle: AppStrings.clickToOpenIn(
+                            self.screenshotOpenAction.localizedTitle(in: self.appLanguage),
+                            in: self.appLanguage
+                        ),
                         opener: self.openScreenshot
                     )
                     if case .region = self.recordingTarget {
@@ -1662,14 +2214,14 @@ final class WindowManager: ObservableObject {
         guard isScrollCaptureRunning else { return }
         scrollCaptureStopRequested = true
         screenshotStatusIsFailure = false
-        screenshotStatusMessage = "Scroll Capture: stopping..."
+        screenshotStatusMessage = AppStrings.scrollCaptureStopping(in: appLanguage)
     }
 
     private func startScrollCapture() {
         if isRecordingPreparationActive || isTakingScreenshot { return }
         guard recordingTarget != .display else {
             screenshotStatusIsFailure = true
-            screenshotStatusMessage = "Scroll Capture requires Window or Region."
+            screenshotStatusMessage = AppStrings.scrollCaptureInvalidTarget(in: appLanguage)
             return
         }
 
@@ -1678,7 +2230,7 @@ final class WindowManager: ObservableObject {
         isTakingScreenshot = true
         isScrollCaptureRunning = true
         scrollCaptureStopRequested = false
-        screenshotStatusMessage = "Scroll Capture: preparing..."
+        screenshotStatusMessage = AppStrings.scrollCapturePreparing(in: appLanguage)
 
         scrollCaptureTask = Task { [weak self] in
             guard let self else { return }
@@ -1717,13 +2269,19 @@ final class WindowManager: ObservableObject {
                         self.scrollCaptureStopRequested = false
                         self.screenshotStatusIsFailure = false
                         self.temporaryScrollPreviewURLs.insert(result.previewImageURL)
-                        self.screenshotStatusMessage = "Scroll Capture saved: \(result.archiveURL.lastPathComponent)"
+                        self.screenshotStatusMessage = AppStrings.scrollCaptureSaved(
+                            filename: result.archiveURL.lastPathComponent,
+                            in: self.appLanguage
+                        )
                         if let previewImage = self.scrollCapturePreviewImage(for: result.previewImageURL) {
                             self.showCapturePreview(
                                 image: previewImage,
                                 target: target,
-                                title: "Scroll Capture Saved",
-                                subtitle: "Click to open in \(self.screenshotOpenAction.rawValue)"
+                                title: AppStrings.text(.scrollCaptureSavedTitle, in: self.appLanguage),
+                                subtitle: AppStrings.clickToOpenIn(
+                                    self.screenshotOpenAction.localizedTitle(in: self.appLanguage),
+                                    in: self.appLanguage
+                                )
                             ) { [weak self] in
                                 guard let self else { return }
                                 switch self.screenshotOpenAction {
@@ -1739,7 +2297,7 @@ final class WindowManager: ObservableObject {
                 }
                 await MainActor.run {
                     self.screenshotStatusIsFailure = true
-                    self.screenshotStatusMessage = "Scroll Capture requires Window or Region."
+                    self.screenshotStatusMessage = AppStrings.scrollCaptureInvalidTarget(in: self.appLanguage)
                 }
             } catch {
                 await MainActor.run {
@@ -1777,8 +2335,11 @@ final class WindowManager: ObservableObject {
                             image: previewImage,
                             outputURL: outputURL,
                             target: target,
-                            title: "Recording Saved",
-                            subtitle: "Click to open in \(self.recordingOpenAction.rawValue)",
+                            title: AppStrings.text(.recordingSavedTitle, in: self.appLanguage),
+                            subtitle: AppStrings.clickToOpenIn(
+                                self.recordingOpenAction.localizedTitle(in: self.appLanguage),
+                                in: self.appLanguage
+                            ),
                             opener: self.openRecording
                         )
                     }
@@ -1802,8 +2363,11 @@ final class WindowManager: ObservableObject {
                                 image: previewImage,
                                 outputURL: outputURL,
                                 target: target,
-                                title: "Recording Saved",
-                                subtitle: "Click to open in \(self.recordingOpenAction.rawValue)",
+                                title: AppStrings.text(.recordingSavedTitle, in: self.appLanguage),
+                                subtitle: AppStrings.clickToOpenIn(
+                                    self.recordingOpenAction.localizedTitle(in: self.appLanguage),
+                                    in: self.appLanguage
+                                ),
                                 opener: self.openRecording
                             )
                         }
@@ -1814,7 +2378,7 @@ final class WindowManager: ObservableObject {
                         SCContentSharingPicker.shared.isActive = false
                         self.dismissRecordingLivePreview()
                         self.recordingServiceRef = nil
-                        self.recordingState = .failed(message: "録画停止に失敗しました")
+                        self.recordingState = .failed(message: AppStrings.recordingStopFailed(in: self.appLanguage))
                         self.recordingTarget = .display
                         self.dismissRegionRecordingOverlay()
                         self.lastResolvedRecordingTarget = nil
@@ -1894,7 +2458,7 @@ final class WindowManager: ObservableObject {
 
     func openCursorHighlightColorPanel() {
         colorPanelCoordinator.present(
-            title: "Cursor Highlight Color",
+            title: AppStrings.text(.cursorHighlightColor, in: appLanguage).replacingOccurrences(of: "...", with: ""),
             color: cursorHighlightColor
         ) { [weak self] color in
             self?.cursorHighlightColor = color
@@ -1903,7 +2467,7 @@ final class WindowManager: ObservableObject {
 
     func openClickRingColorPanel() {
         colorPanelCoordinator.present(
-            title: "Click Ring Color",
+            title: AppStrings.text(.clickRingColor, in: appLanguage).replacingOccurrences(of: "...", with: ""),
             color: clickRingColor
         ) { [weak self] color in
             self?.clickRingColor = color
@@ -2007,7 +2571,7 @@ final class WindowManager: ObservableObject {
                 await MainActor.run {
                     self.dismissRecordingLivePreview()
                     self.recordingServiceRef = nil
-                    self.recordingState = .failed(message: "録画開始に必要な権限が不足、または開始に失敗しました")
+                    self.recordingState = .failed(message: AppStrings.recordingStartFailed(in: self.appLanguage))
                     self.recordingTarget = .display
                     self.dismissRegionRecordingOverlay()
                 }
@@ -2695,7 +3259,7 @@ final class WindowManager: ObservableObject {
     private static func userFriendlyCaptureError(from rawMessage: String) -> String {
         let lower = rawMessage.lowercased()
         if lower.contains("tcc") || lower.contains("denied") || rawMessage.contains("拒否") {
-            return "画面収録の権限が未許可です。システム設定で許可してください。"
+            return AppStrings.screenCapturePermissionRequired(in: AppLanguage.resolved())
         }
         return rawMessage
     }

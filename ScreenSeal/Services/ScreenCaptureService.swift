@@ -26,7 +26,7 @@ final class ScreenCaptureService: NSObject {
 
             guard !content.displays.isEmpty else {
                 logger.error("No display found")
-                onError?("No display found")
+                onError?(AppStrings.text(.noDisplayFound))
                 isRunning = false
                 return
             }
@@ -66,7 +66,7 @@ final class ScreenCaptureService: NSObject {
             }
         } catch {
             logger.error("Failed to start capture: \(error.localizedDescription)")
-            onError?("Screen capture failed: \(error.localizedDescription)")
+            onError?(AppStrings.screenCaptureFailed(error.localizedDescription, in: AppLanguage.resolved()))
             isRunning = false
         }
     }
@@ -704,15 +704,16 @@ private enum ScreenshotError: LocalizedError {
     case pngEncodingFailed
 
     var errorDescription: String? {
+        let language = AppLanguage.resolved()
         switch self {
         case .displayNotFound:
-            return "キャプチャ対象の画面が見つかりません。"
+            return AppStrings.screenshotDisplayNotFound(in: language)
         case .windowNotFound:
-            return "選択したウィンドウが見つかりません。"
+            return AppStrings.screenshotWindowNotFound(in: language)
         case .imageCreationFailed:
-            return "スクリーンショット画像を取得できませんでした。"
+            return AppStrings.screenshotImageCreationFailed(in: language)
         case .pngEncodingFailed:
-            return "スクリーンショットの保存形式を作れませんでした。"
+            return AppStrings.screenshotPngEncodingFailed(in: language)
         }
     }
 }
@@ -726,19 +727,20 @@ private enum ScrollCaptureError: LocalizedError {
     case zipCreationFailed
 
     var errorDescription: String? {
+        let language = AppLanguage.resolved()
         switch self {
         case .invalidTarget:
-            return "Scroll Capture requires Window or Region."
+            return AppStrings.scrollCaptureInvalidTarget(in: language)
         case .accessibilityPermissionRequired:
-            return "Scroll Capture requires Accessibility permission."
+            return AppStrings.accessibilityPermissionRequired(in: language)
         case .scrollEventCreationFailed:
-            return "Scroll event could not be created."
+            return AppStrings.scrollEventCreationFailed(in: language)
         case .imageProcessingFailed:
-            return "Scroll Capture image processing failed."
+            return AppStrings.scrollImageProcessingFailed(in: language)
         case .noCapturedFrames:
-            return "No scroll capture frames were produced."
+            return AppStrings.noScrollCaptureFrames(in: language)
         case .zipCreationFailed:
-            return "Scroll Capture ZIP creation failed."
+            return AppStrings.scrollCaptureZipCreationFailed(in: language)
         }
     }
 }
