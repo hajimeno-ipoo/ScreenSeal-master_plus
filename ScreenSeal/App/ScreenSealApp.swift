@@ -9,7 +9,8 @@ struct ScreenSealApp: App {
             MenuBarView()
                 .environmentObject(appDelegate.windowManager)
         } label: {
-            Image(systemName: "square.grid.3x3.fill")
+            Image("MenuBarIcon")
+                .renderingMode(.template)
         }
         .menuBarExtraStyle(.menu)
     }
