@@ -1,0 +1,361 @@
+<mxfile host="app.diagrams.net" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.2 Safari/605.1.15" version="29.6.1">
+  <diagram id="screen-seal-usage-flow" name="ScreenSeal_plus 操作手順">
+    <mxGraphModel dx="921" dy="711" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="3200" pageHeight="1800" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="bg" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f6fbff;gradientColor=#eef8f4;strokeColor=none;" value="" vertex="1">
+          <mxGeometry height="1800" width="3200" as="geometry" />
+        </mxCell>
+        <mxCell id="title" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=26;fontStyle=1;fontColor=#17324d;" value="ScreenSeal_plus 操作手順ガイド" vertex="1">
+          <mxGeometry height="34" width="560" x="40" y="24" as="geometry" />
+        </mxCell>
+        <mxCell id="sec_ready" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e7f1ff;gradientColor=#d8e8ff;strokeColor=#7ca7e8;strokeWidth=2;fontSize=22;fontStyle=1;fontColor=#183e64;align=left;spacingLeft=18;" value="準備" vertex="1">
+          <mxGeometry height="370" width="420" x="40" y="110" as="geometry" />
+        </mxCell>
+        <mxCell id="sec_mosaic" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e7f8ef;gradientColor=#d6f0e1;strokeColor=#6fb98c;strokeWidth=2;fontSize=22;fontStyle=1;fontColor=#1d5d39;align=left;spacingLeft=18;" value="モザイク設定（必要なら）" vertex="1">
+          <mxGeometry height="240" width="870" x="560" y="110" as="geometry" />
+        </mxCell>
+        <mxCell id="sec_capture" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef4ff;gradientColor=#e4ebff;strokeColor=#8da2df;strokeWidth=2;fontSize=22;fontStyle=1;fontColor=#344c94;align=left;spacingLeft=18;" value="キャプチャ設定" vertex="1">
+          <mxGeometry height="309" width="460" x="1590" y="94" as="geometry" />
+        </mxCell>
+        <mxCell id="sec_shot" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2e2;gradientColor=#ffe7cd;strokeColor=#e4a251;strokeWidth=2;fontSize=22;fontStyle=1;fontColor=#8a4d06;align=left;spacingLeft=18;" value="スクリーンショット" vertex="1">
+          <mxGeometry height="1250" width="1420" x="50" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="sec_record" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe8e8;gradientColor=#ffd9d9;strokeColor=#d97a7a;strokeWidth=2;fontSize=22;fontStyle=1;fontColor=#8d2b2b;align=left;spacingLeft=18;" value="録画" vertex="1">
+          <mxGeometry height="992" width="560" x="1570" y="530" as="geometry" />
+        </mxCell>
+        <mxCell id="sec_save" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e7fbfb;gradientColor=#d8f4f1;strokeColor=#66beb9;strokeWidth=2;fontSize=22;fontStyle=1;fontColor=#195f5c;align=left;spacingLeft=18;" value="保存と確認" vertex="1">
+          <mxGeometry height="570" width="850" x="2240" y="780" as="geometry" />
+        </mxCell>
+        <mxCell id="r1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#5f91d3;strokeWidth=2;fontSize=17;fontStyle=1;" value="アプリを起動" vertex="1">
+          <mxGeometry height="52" width="120" x="180" y="130" as="geometry" />
+        </mxCell>
+        <mxCell id="r2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#5f91d3;strokeWidth=2;fontSize=17;" value="メニューバーに&#xa;アイコンが出る" vertex="1">
+          <mxGeometry height="52" width="160" x="160" y="227" as="geometry" />
+        </mxCell>
+        <mxCell id="r3" parent="1" style="shape=rhombus;whiteSpace=wrap;html=1;fillColor=#fff4d6;strokeColor=#d6a100;strokeWidth=2;fontSize=15;fontStyle=1;" value="画面収録の&#xa;権限を確認" vertex="1">
+          <mxGeometry height="86" width="110" x="185" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="rnote" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e8;strokeColor=#efc66d;strokeWidth=2;dashed=1;fontSize=13;fontColor=#7d5a00;" value="録画とスクショには macOS の画面収録権限が必要です" vertex="1">
+          <mxGeometry height="26" width="330" x="85" y="440" as="geometry" />
+        </mxCell>
+        <mxCell id="m1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#57a072;strokeWidth=2;fontSize=15;fontStyle=1;" value="新しいモザイクを出す" vertex="1">
+          <mxGeometry height="52" width="160" x="770" y="130" as="geometry" />
+        </mxCell>
+        <mxCell id="m2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#57a072;strokeWidth=2;fontSize=17;" value="位置を決める" vertex="1">
+          <mxGeometry height="52" width="140" x="980" y="130" as="geometry" />
+        </mxCell>
+        <mxCell id="m3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#57a072;strokeWidth=2;fontSize=17;" value="大きさを変える" vertex="1">
+          <mxGeometry height="52" width="140" x="1210" y="130" as="geometry" />
+        </mxCell>
+        <mxCell id="m4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#57a072;strokeWidth=2;fontSize=17;" value="種類を変える" vertex="1">
+          <mxGeometry height="52" width="140" x="895" y="240" as="geometry" />
+        </mxCell>
+        <mxCell id="m5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#57a072;strokeWidth=2;fontSize=17;" value="強さを調整" vertex="1">
+          <mxGeometry height="52" width="140" x="1190" y="240" as="geometry" />
+        </mxCell>
+        <mxCell id="mnote" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f4fff8;strokeColor=#7fc596;strokeWidth=2;dashed=1;fontSize=13;fontColor=#24563a;" value="必要な時だけ使います" vertex="1">
+          <mxGeometry height="26" width="250" x="955" y="310" as="geometry" />
+        </mxCell>
+        <mxCell id="c1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#8097d2;strokeWidth=2;fontSize=17;fontStyle=1;" value="キャプチャモードを選ぶ" vertex="1">
+          <mxGeometry height="52" width="280" x="1710" y="130" as="geometry" />
+        </mxCell>
+        <mxCell id="c2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#8097d2;strokeWidth=2;fontSize=17;" value="キャプチャ対象を選ぶ" vertex="1">
+          <mxGeometry height="52" width="280" x="1710" y="310" as="geometry" />
+        </mxCell>
+        <mxCell id="c3" parent="1" style="shape=rhombus;whiteSpace=wrap;html=1;fillColor=#fff4d6;strokeColor=#d6a100;strokeWidth=2;fontSize=27;fontStyle=1;" value="スクショ&#xa;または&#xa;録画" vertex="1">
+          <mxGeometry height="176" width="320" x="2242" y="165" as="geometry" />
+        </mxCell>
+        <mxCell id="shotShared1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d99334;strokeWidth=2;fontSize=17;fontStyle=1;" value="1. 種類を選ぶ" vertex="1">
+          <mxGeometry height="52" width="330" x="530" y="540" as="geometry" />
+        </mxCell>
+        <mxCell id="shotShared2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fffaf1;strokeColor=#e1ad58;strokeWidth=2;fontSize=16;" value="通常スクショ / スクロール" vertex="1">
+          <mxGeometry height="40" width="330" x="530" y="630" as="geometry" />
+        </mxCell>
+        <mxCell id="shotShared3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d99334;strokeWidth=2;fontSize=17;" value="2. 保存倍率を選ぶ" vertex="1">
+          <mxGeometry height="52" width="330" x="530" y="711" as="geometry" />
+        </mxCell>
+        <mxCell id="shotShared4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fffaf1;strokeColor=#e1ad58;strokeWidth=2;fontSize=16;" value="オリジナル / 2倍 / 1倍 / 0.5倍" vertex="1">
+          <mxGeometry height="40" width="330" x="530" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="shotBranch1" parent="1" style="shape=rhombus;whiteSpace=wrap;html=1;fillColor=#fff4d6;strokeColor=#d6a100;strokeWidth=2;fontSize=15;fontStyle=1;" value="通常スクショ" vertex="1">
+          <mxGeometry height="80" width="150" x="310" y="922" as="geometry" />
+        </mxCell>
+        <mxCell id="shotBranch2" parent="1" style="shape=rhombus;whiteSpace=wrap;html=1;fillColor=#fff4d6;strokeColor=#d6a100;strokeWidth=2;fontSize=15;fontStyle=1;" value="スクロール" vertex="1">
+          <mxGeometry height="80" width="150" x="955" y="912" as="geometry" />
+        </mxCell>
+        <mxCell id="single1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d99334;strokeWidth=2;fontSize=17;" value="スクリーンショットを撮る" vertex="1">
+          <mxGeometry height="52" width="270" x="250" y="1155" as="geometry" />
+        </mxCell>
+        <mxCell id="single2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fffaf1;strokeColor=#e1ad58;strokeWidth=2;fontSize=17;fontStyle=1;" value="PNG を保存" vertex="1">
+          <mxGeometry height="52" width="270" x="250" y="1277" as="geometry" />
+        </mxCell>
+        <mxCell id="single3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#5ab7b0;strokeWidth=2;fontSize=17;fontStyle=1;" value="右下にサムネ表示" vertex="1">
+          <mxGeometry height="52" width="270" x="250" y="1390" as="geometry" />
+        </mxCell>
+        <mxCell id="single4" parent="1" style="shape=rhombus;whiteSpace=wrap;html=1;fillColor=#ecfffd;strokeColor=#5ab7b0;strokeWidth=2;fontSize=15;fontStyle=1;" value="サムネをクリック" vertex="1">
+          <mxGeometry height="80" width="200" x="285" y="1490" as="geometry" />
+        </mxCell>
+        <mxCell id="single5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f1fffe;strokeColor=#87d4cf;strokeWidth=2;dashed=1;fontSize=16;fontColor=#165e59;" value="プレビュー → PNG&#xa;Finder → PNG を選択表示" vertex="1">
+          <mxGeometry height="70" width="330" x="220" y="1630" as="geometry" />
+        </mxCell>
+        <mxCell id="scroll3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d99334;strokeWidth=2;fontSize=17;" value="スクリーンショットを撮る で開始" vertex="1">
+          <mxGeometry height="54" width="305" x="877.5" y="1030" as="geometry" />
+        </mxCell>
+        <mxCell id="scroll4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d99334;strokeWidth=2;fontSize=17;" value="自動で縦に取り続ける" vertex="1">
+          <mxGeometry height="52" width="310" x="875" y="1120" as="geometry" />
+        </mxCell>
+        <mxCell id="scroll5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fffaf1;strokeColor=#e1ad58;strokeWidth=2;fontSize=16;" value="終端で停止 / 停止ボタンでも止められる" vertex="1">
+          <mxGeometry height="40" width="310" x="875" y="1190" as="geometry" />
+        </mxCell>
+        <mxCell id="scroll6" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fffaf1;strokeColor=#e1ad58;strokeWidth=2;fontSize=17;fontStyle=1;" value="ZIP を保存" vertex="1">
+          <mxGeometry height="52" width="310" x="875" y="1255" as="geometry" />
+        </mxCell>
+        <mxCell id="scroll7" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fffaf1;strokeColor=#e1ad58;strokeWidth=2;dashed=1;fontSize=14;fontColor=#8a4d06;" value="ZIP 内: step画像 と 完成画像" vertex="1">
+          <mxGeometry height="28" width="310" x="875" y="1340" as="geometry" />
+        </mxCell>
+        <mxCell id="scroll8" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#5ab7b0;strokeWidth=2;fontSize=17;fontStyle=1;" value="右下にサムネ表示" vertex="1">
+          <mxGeometry height="52" width="310" x="875" y="1410" as="geometry" />
+        </mxCell>
+        <mxCell id="scroll9" parent="1" style="shape=rhombus;whiteSpace=wrap;html=1;fillColor=#ecfffd;strokeColor=#5ab7b0;strokeWidth=2;fontSize=15;fontStyle=1;" value="サムネをクリック" vertex="1">
+          <mxGeometry height="80" width="200" x="930" y="1510" as="geometry" />
+        </mxCell>
+        <mxCell id="scroll10" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f1fffe;strokeColor=#87d4cf;strokeWidth=2;dashed=1;fontSize=16;fontColor=#165e59;" value="プレビュー → 完成画像&#xa;Finder → ZIP を選択表示" vertex="1">
+          <mxGeometry height="70" width="340" x="860" y="1640" as="geometry" />
+        </mxCell>
+        <mxCell id="record1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cf6868;strokeWidth=2;fontSize=17;fontStyle=1;" value="1. 録画を開始" vertex="1">
+          <mxGeometry height="52" width="360" x="1670" y="600" as="geometry" />
+        </mxCell>
+        <mxCell id="record2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cf6868;strokeWidth=2;fontSize=17;" value="2. 3秒カウントダウン" vertex="1">
+          <mxGeometry height="52" width="360" x="1670" y="700" as="geometry" />
+        </mxCell>
+        <mxCell id="record3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cf6868;strokeWidth=2;fontSize=17;" value="3. 直前のアプリを前面に戻す" vertex="1">
+          <mxGeometry height="52" width="360" x="1670" y="794" as="geometry" />
+        </mxCell>
+        <mxCell id="record4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cf6868;strokeWidth=2;fontSize=17;" value="4. 録画が始まる" vertex="1">
+          <mxGeometry height="52" width="360" x="1670" y="890" as="geometry" />
+        </mxCell>
+        <mxCell id="record5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cf6868;strokeWidth=2;fontSize=17;" value="5. 録画を停止" vertex="1">
+          <mxGeometry height="52" width="360" x="1670" y="978" as="geometry" />
+        </mxCell>
+        <mxCell id="record6" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff4f4;strokeColor=#df8b8b;strokeWidth=2;fontSize=17;fontStyle=1;" value="MP4 を保存" vertex="1">
+          <mxGeometry height="52" width="360" x="1670" y="1058" as="geometry" />
+        </mxCell>
+        <mxCell id="record7" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#5ab7b0;strokeWidth=2;fontSize=17;fontStyle=1;" value="右下にサムネ表示" vertex="1">
+          <mxGeometry height="52" width="360" x="1670" y="1160" as="geometry" />
+        </mxCell>
+        <mxCell id="record8" parent="1" style="shape=rhombus;whiteSpace=wrap;html=1;fillColor=#ecfffd;strokeColor=#5ab7b0;strokeWidth=2;fontSize=15;fontStyle=1;" value="サムネをクリック" vertex="1">
+          <mxGeometry height="80" width="200" x="1750" y="1263" as="geometry" />
+        </mxCell>
+        <mxCell id="record9" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f1fffe;strokeColor=#87d4cf;strokeWidth=2;dashed=1;fontSize=16;fontColor=#165e59;" value="Finder → MP4 を選択表示&#xa;QuickTime → MP4 を開く" vertex="1">
+          <mxGeometry height="70" width="360" x="1670" y="1410" as="geometry" />
+        </mxCell>
+        <mxCell id="save1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#5ab7b0;strokeWidth=2;fontSize=17;fontStyle=1;" value="スクショ保存先&#xa;~/Pictures/ScreenSeal_plus/" vertex="1">
+          <mxGeometry height="70" width="310" x="2590" y="942" as="geometry" />
+        </mxCell>
+        <mxCell id="save2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#5ab7b0;strokeWidth=2;fontSize=17;fontStyle=1;" value="録画保存先&#xa;~/Movies/ScreenSeal_plus/" vertex="1">
+          <mxGeometry height="70" width="310" x="2590" y="830" as="geometry" />
+        </mxCell>
+        <mxCell id="save3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#5ab7b0;strokeWidth=2;fontSize=17;" value="通常スクショ → PNG&#xa;スクロール → ZIP&#xa;録画 → MP4" vertex="1">
+          <mxGeometry height="84" width="470" x="2510" y="1058" as="geometry" />
+        </mxCell>
+        <mxCell id="save4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f1fffe;strokeColor=#87d4cf;strokeWidth=2;dashed=1;fontSize=16;fontColor=#165e59;" value="サムネをクリックした時に&#xa;各モードの開き方設定が効きます" vertex="1">
+          <mxGeometry height="70" width="470" x="2510" y="1207" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" edge="1" parent="1" source="r1" style="rounded=0;html=1;strokeColor=#5f91d3;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="r2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" edge="1" parent="1" source="r2" style="rounded=0;html=1;strokeColor=#5f91d3;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="r3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" edge="1" parent="1" source="m1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;rounded=0;html=1;strokeColor=#57a072;strokeWidth=2;endArrow=block;endFill=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" target="m2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" edge="1" parent="1" source="m2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;rounded=0;html=1;strokeColor=#57a072;strokeWidth=2;endArrow=block;endFill=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" target="m3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" edge="1" parent="1" source="m3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;rounded=0;html=1;strokeColor=#57a072;strokeWidth=2;endArrow=block;endFill=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" target="m4">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1370" y="156" />
+              <mxPoint x="1370" y="211" />
+              <mxPoint x="840" y="211" />
+              <mxPoint x="840" y="266" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e6" edge="1" parent="1" source="m4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;rounded=0;html=1;strokeColor=#57a072;strokeWidth=2;endArrow=block;endFill=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" target="m5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" edge="1" parent="1" source="c1" style="rounded=0;html=1;strokeColor=#8097d2;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="c2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" edge="1" parent="1" source="c2" style="rounded=0;html=1;strokeColor=#8097d2;strokeWidth=2;endArrow=block;endFill=1;entryX=0;entryY=0.5;html=1;entryDx=0;entryDy=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" target="c3">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="2120" y="336" />
+              <mxPoint x="2120" y="253" />
+            </Array>
+            <mxPoint x="1480" y="266" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e9" edge="1" parent="1" source="r3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;rounded=0;html=1;strokeColor=#4f88cf;strokeWidth=3;endArrow=block;endFill=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" target="m1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="510" y="343" />
+              <mxPoint x="510" y="156" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e10" edge="1" parent="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;rounded=0;html=1;strokeColor=#4f88cf;strokeWidth=3;dashed=1;endArrow=block;endFill=1;fontSize=12;fontStyle=1;labelBackgroundColor=#eef4ff;exitX=0.5;exitY=1;html=1;exitDx=0;exitDy=0;" value="そのまま進める">
+          <mxGeometry relative="1" x="-0.0365" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="240" y="430" />
+              <mxPoint x="1550" y="430" />
+              <mxPoint x="1550" y="160" />
+            </Array>
+            <mxPoint x="239.92000000000002" y="390" as="sourcePoint" />
+            <mxPoint x="1550" y="160" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e11" edge="1" parent="1" source="mnote" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;rounded=0;html=1;strokeColor=#4f88cf;strokeWidth=3;endArrow=block;endFill=1;fontSize=12;fontStyle=1;labelBackgroundColor=#e7f8ef;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" target="c1" value="必要なら">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1490" y="323" />
+              <mxPoint x="1490" y="156" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e12" edge="1" parent="1" source="c3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;rounded=0;html=1;strokeColor=#d99334;strokeWidth=3;endArrow=block;endFill=1;fontSize=12;fontStyle=1;labelBackgroundColor=#fff2e2;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="shotShared1" value="スクショ">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="2402" y="450" />
+              <mxPoint x="695" y="450" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e13" edge="1" parent="1" source="c3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;rounded=0;html=1;strokeColor=#cf6868;strokeWidth=3;endArrow=block;endFill=1;fontSize=12;fontStyle=1;labelBackgroundColor=#ffe8e8;exitX=1;exitY=0.5;entryX=0.5;entryY=0;html=1;exitDx=0;exitDy=0;" target="record1" value="録画">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e14" edge="1" parent="1" source="shotShared1" style="rounded=0;html=1;strokeColor=#d99334;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="shotShared2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e15" edge="1" parent="1" source="shotShared2" style="rounded=0;html=1;strokeColor=#d99334;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="shotShared3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e16" edge="1" parent="1" source="shotShared3" style="rounded=0;html=1;strokeColor=#d99334;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="shotShared4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e17" edge="1" parent="1" source="shotShared4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;rounded=0;html=1;strokeColor=#d99334;strokeWidth=2;endArrow=block;endFill=1;fontSize=12;labelBackgroundColor=#fff2e2;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="shotBranch1" value="通常">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e18" edge="1" parent="1" source="shotShared4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;rounded=0;html=1;strokeColor=#d99334;strokeWidth=2;endArrow=block;endFill=1;fontSize=12;labelBackgroundColor=#fff2e2;exitX=0.5;exitY=1;html=1;" target="shotBranch2" value="スクロール">
+          <mxGeometry relative="1" x="0.204" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="695" y="880" />
+              <mxPoint x="1030" y="880" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e19" edge="1" parent="1" source="shotBranch1" style="rounded=0;html=1;strokeColor=#d99334;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="single1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e20" edge="1" parent="1" source="single1" style="rounded=0;html=1;strokeColor=#d99334;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="single2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e21" edge="1" parent="1" source="single2" style="rounded=0;html=1;strokeColor=#5ab7b0;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="single3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e22" edge="1" parent="1" source="single3" style="rounded=0;html=1;strokeColor=#5ab7b0;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="single4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e23" edge="1" parent="1" source="single4" style="rounded=0;html=1;strokeColor=#5ab7b0;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="single5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e24" edge="1" parent="1" source="shotBranch2" style="rounded=0;html=1;strokeColor=#d99334;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" target="scroll3">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1115" y="732" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e27" edge="1" parent="1" source="scroll3" style="rounded=0;html=1;strokeColor=#d99334;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="scroll4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e28" edge="1" parent="1" source="scroll4" style="rounded=0;html=1;strokeColor=#d99334;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="scroll5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e29" edge="1" parent="1" source="scroll5" style="rounded=0;html=1;strokeColor=#d99334;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="scroll6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e30" edge="1" parent="1" source="scroll6" style="rounded=0;html=1;strokeColor=#d99334;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="scroll7">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e31" edge="1" parent="1" source="scroll7" style="rounded=0;html=1;strokeColor=#5ab7b0;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="scroll8">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e32" edge="1" parent="1" source="scroll8" style="rounded=0;html=1;strokeColor=#5ab7b0;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="scroll9">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e33" edge="1" parent="1" source="scroll9" style="rounded=0;html=1;strokeColor=#5ab7b0;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="scroll10">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e34" edge="1" parent="1" source="record1" style="rounded=0;html=1;strokeColor=#cf6868;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="record2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e35" edge="1" parent="1" source="record2" style="rounded=0;html=1;strokeColor=#cf6868;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="record3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e36" edge="1" parent="1" source="record3" style="rounded=0;html=1;strokeColor=#cf6868;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="record4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e37" edge="1" parent="1" source="record4" style="rounded=0;html=1;strokeColor=#cf6868;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="record5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e38" edge="1" parent="1" source="record5" style="rounded=0;html=1;strokeColor=#cf6868;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="record6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e39" edge="1" parent="1" source="record6" style="rounded=0;html=1;strokeColor=#5ab7b0;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="record7">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e40" edge="1" parent="1" source="record7" style="rounded=0;html=1;strokeColor=#5ab7b0;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="record8">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e41" edge="1" parent="1" source="record8" style="rounded=0;html=1;strokeColor=#5ab7b0;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;html=1;" target="record9">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e42" edge="1" parent="1" source="single2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;rounded=0;html=1;strokeColor=#5ab7b0;strokeWidth=3;endArrow=block;endFill=1;fontSize=12;fontStyle=1;labelBackgroundColor=#e7fbfb;html=1;" value="保存先">
+          <mxGeometry relative="1" x="-0.0052" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="650" y="1303" />
+              <mxPoint x="650" y="1730" />
+              <mxPoint x="1920" y="1730" />
+            </Array>
+            <mxPoint x="850" y="1297" as="sourcePoint" />
+            <mxPoint x="1920" y="1590" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e43" edge="1" parent="1" source="scroll6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;rounded=0;html=1;strokeColor=#5ab7b0;strokeWidth=3;endArrow=block;endFill=1;fontSize=12;fontStyle=1;labelBackgroundColor=#e7fbfb;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;entryDx=0;entryDy=0;" target="save1" value="保存先">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1340" y="1281" />
+              <mxPoint x="1340" y="1590" />
+              <mxPoint x="2400" y="1590" />
+              <mxPoint x="2400" y="977" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e44" edge="1" parent="1" source="record6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;rounded=0;html=1;strokeColor=#5ab7b0;strokeWidth=3;endArrow=block;endFill=1;fontSize=12;fontStyle=1;labelBackgroundColor=#e7fbfb;exitX=1;exitY=0.5;entryX=0;entryY=0.5;html=1;" target="save2" value="保存先">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="2080" y="1084" />
+              <mxPoint x="2080" y="865" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

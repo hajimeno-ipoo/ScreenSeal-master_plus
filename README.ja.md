@@ -36,6 +36,8 @@
 
 ## Usage
 
+![ScreenSeal_plus 操作手順図](ScreenSeal_plus_usage_flow.drawio.png)
+
 1. アプリを起動するとメニューバーにアイコンが表示されます
 2. メニューから **New Mosaic Window** をクリックしてモザイクウィンドウを作成
 3. ウィンドウをドラッグして隠したい箇所に配置、端をドラッグしてリサイズ

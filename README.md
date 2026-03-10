@@ -41,6 +41,8 @@ Download the latest `ScreenSeal_plus-macOS.zip` from the [Releases](https://gith
 
 ## Usage
 
+![ScreenSeal_plus usage flow](ScreenSeal_plus_usage_flow.drawio.png)
+
 1. Launch the app — an icon appears in the menu bar
 2. Click **New Mosaic Window** from the menu to create a mosaic window
 3. Drag the window to cover the area you want to hide; drag the edges to resize
