@@ -21,6 +21,7 @@
 - **画面録画** - メニューバーから単一ディスプレイを MP4 録画
 - **保存後サムネイル確認** - スクショや録画の保存後に、画面上へサムネイルを一時表示
 - **開き先の選択** - スクショは Finder / Preview、録画は Finder / QuickTime を選択可能
+- **英語 / 日本語切り替え** - アプリ内メニューと主要な文言をその場で切り替え可能
 - **スクショ保存倍率の選択** - `original` / `2x` / `1x` / `0.5x` で保存倍率を選べる
 - **クリックズーム** - 左クリック中はカーソル中心へ滑らかに拡大（1.8x）
 
@@ -39,26 +40,27 @@
 ![ScreenSeal_plus 操作手順図](ScreenSeal_plus_usage_flow.drawio.png)
 
 1. アプリを起動するとメニューバーにアイコンが表示されます
-2. メニューから **New Mosaic Window** をクリックしてモザイクウィンドウを作成
-3. ウィンドウをドラッグして隠したい箇所に配置、端をドラッグしてリサイズ
-4. **右クリック**でコンテキストメニューを開き、フィルタータイプや強度を変更
-5. **スクロールホイール**でも強度を素早く調整可能
-6. メニューバーからウィンドウの表示/非表示を切り替え
-7. **Capture Mode** で **Record** または **Screenshot** を選びます
-8. **Capture Target** で **Full Display** / **Window** / **Select Region...** を選びます
-9. **Screenshot** モードでは **Screenshot Type** で **Single Screenshot** または **Scroll Capture** を選びます
-10. **Screenshot Scale** で `original` / `2x` / `1x` / `0.5x` を選びます
-11. **Single Screenshot** では **Take Screenshot** で `~/Pictures/ScreenSeal_plus/` に PNG 保存
-12. **Scroll Capture** では **Window** か **Region** を選んで **Take Screenshot** で開始し、終わりたい所で **Stop Scroll Capture** を押します
-13. スクロールキャプチャは `~/Pictures/ScreenSeal_plus/` に ZIP を1つ保存します。中には `step_*.png` と `stitched.png` が入ります
-14. **Screenshot Click Action** は保存後サムネイルをクリックした時に効きます
-15. `Preview` は通常スクショの PNG、またはスクロールキャプチャの `stitched.png` を開きます
-16. `Finder` は通常スクショの PNG、またはスクロールキャプチャの ZIP を表示します
-17. **Record** モードでは **Start Recording** で `~/Movies/ScreenSeal_plus/` に MP4 保存
-18. **Recording Click Action** で録画の開き先を **Finder** / **QuickTime** から選びます
-19. 保存後は画面上にサムネイルが出て、クリックすると選んだアプリで開きます
-20. 録画開始前は3秒カウントダウンが出て、その後は直前に使っていたアプリが前面に戻るので、すぐ操作できます
-21. 録画中に左クリックを押すとクリックズームが有効化
+2. 必要なら **Language** で **English** / **日本語** を切り替えます
+3. メニューから **New Mosaic Window** をクリックしてモザイクウィンドウを作成
+4. ウィンドウをドラッグして隠したい箇所に配置、端をドラッグしてリサイズ
+5. **右クリック**でコンテキストメニューを開き、フィルタータイプや強度を変更
+6. **スクロールホイール**でも強度を素早く調整可能
+7. メニューバーからウィンドウの表示/非表示を切り替え
+8. **Capture Mode** で **Record** または **Screenshot** を選びます
+9. **Capture Target** で **Full Display** / **Window** / **Select Region...** を選びます
+10. **Screenshot** モードでは **Screenshot Type** で **Single Screenshot** または **Scroll Capture** を選びます
+11. **Screenshot Scale** で `original` / `2x` / `1x` / `0.5x` を選びます
+12. **Single Screenshot** では **Take Screenshot** で `~/Pictures/ScreenSeal_plus/` に PNG 保存
+13. **Scroll Capture** では **Window** か **Region** を選んで **Take Screenshot** で開始し、終わりたい所で **Stop Scroll Capture** を押します
+14. スクロールキャプチャは `~/Pictures/ScreenSeal_plus/` に ZIP を1つ保存します。中には `step_*.png` と `stitched.png` が入ります
+15. **Screenshot Click Action** は保存後サムネイルをクリックした時に効きます
+16. `Preview` は通常スクショの PNG、またはスクロールキャプチャの `stitched.png` を開きます
+17. `Finder` は通常スクショの PNG、またはスクロールキャプチャの ZIP を表示します
+18. **Record** モードでは **Start Recording** で `~/Movies/ScreenSeal_plus/` に MP4 保存
+19. **Recording Click Action** で録画の開き先を **Finder** / **QuickTime** から選びます
+20. 保存後は画面上にサムネイルが出て、クリックすると選んだアプリで開きます
+21. 録画開始前は3秒カウントダウンが出て、その後は直前に使っていたアプリが前面に戻るので、すぐ操作できます
+22. 録画中に左クリックを押すとクリックズームが有効化
 
 ## Build
 
